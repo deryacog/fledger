@@ -1,0 +1,36 @@
+use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
+use flarch::nodeids::NodeID;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct Mixnode {
+    pub core: LoopixCore,
+}
+
+impl Mixnode {
+    pub fn new() -> Self {
+        Self {
+            core: LoopixCore::new(
+                LoopixStorage::default(),
+                LoopixConfig {
+                    lambda_loop: 2.0,
+                    lambda_drop: 0.0,
+                    lambda_payload: 0.0,
+                    path_length: 0,
+                    mean_delay: 0.001,
+                    lambda_loop_mix: 500.0,
+                },
+            ),
+        }
+    }
+}
+
+impl NodeBehavior for Mixnode {
+    fn send_loop_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
+    fn send_drop_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
+    fn send_payload_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
+
+    fn get_node_type(&self) -> &'static str {
+        "Mixnode"
+    }
+}
