@@ -50,9 +50,11 @@ impl LoopixStorageSave {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LoopixStorage {
-    pub last_loop_cover: HashMap<NodeID, SystemTime>,
+    pub last_loop_cover: SystemTime,
     pub last_drop: SystemTime,
     pub last_payload: SystemTime,
+    pub last_pull: SystemTime,
+    pub last_real: SystemTime,
 }
 
 impl LoopixStorage {
@@ -61,27 +63,30 @@ impl LoopixStorage {
     }
 }
 
-
 impl Default for LoopixStorage {
     fn default() -> Self {
         LoopixStorage {
-            last_loop_cover: HashMap::new(),
+            last_loop_cover: SystemTime::now(),
             last_drop: SystemTime::now(),
             last_payload: SystemTime::now(),
+            last_pull: SystemTime::now(),
+            last_real: SystemTime::now(),
         }
     }
 }
 
-// //////////////////////// Core //////////////////////////////// ////////////////////////
+// //////////////////////// Core ////////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LoopixCore {
     pub storage: LoopixStorage,
     pub config: LoopixConfig,
+    pub key_pair: (PublicKey, PrivateKey), // TODO: definitions of PublicKey and PrivateKey
 }
 
 impl LoopixCore {
-    pub fn new(storage: LoopixStorage, config: LoopixConfig) -> Self {
-        Self { storage, config }
+    pub fn new(storage: LoopixStorage, config: LoopixConfig, key_pair: Option<(PublicKey, PrivateKey)>) -> Self {
+        let key_pair = key_pair.unwrap_or_else(generate_key_pair); // TODO generate key pair
+        Self { storage, config, key_pair }
     }
 
     pub fn get_config(&self) -> &LoopixConfig {
@@ -91,35 +96,13 @@ impl LoopixCore {
     pub fn get_storage(&self) -> &LoopixStorage {
         &self.storage
     }
+
+    pub fn get_key_pair(&self) -> &(PublicKey, PrivateKey) {
+        &self.key_pair
+    }
+
 }
 
 pub trait NodeBehavior {
-    fn send_loop_traffic(&self, node_id: NodeID);
-    fn send_drop_traffic(&self, node_id: NodeID);
-    fn send_payload_traffic(&self, node_id: NodeID);
-
-    fn get_node_type(&self) -> &'static str {
-        "Generic Node"
-    }
+    fn process_loopix_message(&self, message: Message);
 }
-
-
-// TODO circular imports?
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub enum LoopixNode {
-    Provider(Provider),
-    Client(Client),
-    Mixnode(Mixnode),
-}
-
-impl LoopixNode {
-    pub fn get_config(&self) -> &LoopixConfig {
-        match self {
-            LoopixNode::Provider(p) => &p.core.config,
-            LoopixNode::Client(c) => &c.core.config,
-            LoopixNode::Mixnode(m) => &m.core.config,
-        }
-    }
-
-}
-
