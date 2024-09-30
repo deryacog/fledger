@@ -7,8 +7,23 @@ pub struct Mixnode {
     pub core: LoopixCore,
 }
 
-impl Mixnode {
-    pub fn new() -> Self {
+pub trait MixnodeInterface {
+    fn new() -> Self;
+
+    fn create_loop_message(&self, node_id: NodeID) {
+        // Default implementation
+    }
+
+    fn create_drop_message(&self, node_id: NodeID) {
+        // Default implementation
+    }
+
+    // TODO some kind of send queue
+}
+
+impl MixnodeInterface for Mixnode {
+    fn new() -> Self {
+        // TODO: Generate key pair
         Self {
             core: LoopixCore::new(
                 LoopixStorage::default(),
@@ -23,14 +38,12 @@ impl Mixnode {
             ),
         }
     }
+
 }
 
 impl NodeBehavior for Mixnode {
-    fn send_loop_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
-    fn send_drop_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
-    fn send_payload_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
-
-    fn get_node_type(&self) -> &'static str {
-        "Mixnode"
+    fn process_loopix_message(&self, message: Message) {
+        // basically routing
+        // TODO: Implement
     }
 }
