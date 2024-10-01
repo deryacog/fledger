@@ -1,10 +1,11 @@
 use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
 use super::mixnode::MixnodeInterface;
 use flarch::nodeids::NodeID;
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::loopix::messages::Message;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Provider {
     pub core: LoopixCore,
     client_messages: HashMap<NodeID, Vec<Message>>, // TODO: Define Message type
@@ -13,7 +14,7 @@ pub struct Provider {
 pub trait ProviderInterface: MixnodeInterface {
     fn subscribe_client(&mut self, client_id: NodeID);
 
-    fn storage_client_message(&mut self, client_id: NodeID, message: Message);
+    fn store_client_message(&mut self, client_id: NodeID, message: Message);
 
     fn get_client_messages(&self) -> HashMap<NodeID, Vec<Message>>;
     fn create_dummy_message(&self) -> Message;
@@ -25,7 +26,7 @@ impl Provider {
         // TODO: Implement client subscription logic
     }
 
-    fn storage_client_message(&mut self, client_id: NodeID, message: Message) {
+    fn store_client_message(&mut self, client_id: NodeID, message: Message) {
         // TODO: Implement storing client messages
     }
 
@@ -74,6 +75,26 @@ impl MixnodeInterface for Provider {
 impl ProviderInterface for Provider {
     fn subscribe_client(&mut self, client_id: NodeID) {
         self.client_messages.entry(client_id).or_insert(Vec::new());
+    }
+
+    fn store_client_message(&mut self, client_id: NodeID, message: Message) {
+        if let Some(messages) = self.client_messages.get_mut(&client_id) {
+            messages.push(message);
+        }
+    }
+
+    fn get_client_messages(&self) -> HashMap<NodeID, Vec<Message>> {
+        self.client_messages.clone()
+    }
+
+    fn create_dummy_message(&self) -> Message {
+        // Dummy implementation, replace with actual dummy message creation logic
+        Message::default()
+    }
+
+    fn send_pull_reply(&self, client_id: NodeID, message: Message) {
+        // Dummy implementation, replace with actual send logic
+        println!("Sending pull reply to client {:?}: {:?}", client_id, message);
     }
 }
 

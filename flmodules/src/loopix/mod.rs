@@ -1,10 +1,10 @@
-pub mod broker;
-pub mod messages;
 pub mod core;
 
 mod provider;
 mod client;
 mod mixnode;
+
+pub mod messages;
 
 pub use provider::Provider;
 pub use client::Client;
