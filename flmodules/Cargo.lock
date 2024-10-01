@@ -823,6 +823,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml",
+ "x25519-dalek",
 ]
 
 [[package]]

@@ -1,10 +1,7 @@
-use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::time::{SystemTime};
-use super::Provider;
-use super::Client;
-use super::Mixnode;
+use std::time::SystemTime;
+use x25519_dalek::{PublicKey, StaticSecret};
+use crate::loopix::messages::Message;
 
 // //////////////////////// Config //////////////////////////////// ////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -76,16 +73,16 @@ impl Default for LoopixStorage {
 }
 
 // //////////////////////// Core ////////////////////////////////////////////////////////
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LoopixCore {
     pub storage: LoopixStorage,
     pub config: LoopixConfig,
-    pub key_pair: (PublicKey, PrivateKey), // TODO: definitions of PublicKey and PrivateKey
+    key_pair: (PublicKey, StaticSecret),
 }
 
 impl LoopixCore {
-    pub fn new(storage: LoopixStorage, config: LoopixConfig, key_pair: Option<(PublicKey, PrivateKey)>) -> Self {
-        let key_pair = key_pair.unwrap_or_else(generate_key_pair); // TODO generate key pair
+    pub fn new(storage: LoopixStorage, config: LoopixConfig) -> Self {
+        let key_pair = Self::generate_key_pair();
         Self { storage, config, key_pair }
     }
 
@@ -97,12 +94,109 @@ impl LoopixCore {
         &self.storage
     }
 
-    pub fn get_key_pair(&self) -> &(PublicKey, PrivateKey) {
-        &self.key_pair
+    pub fn get_public_key(&self) -> &PublicKey {
+        &self.key_pair.0
     }
 
+    fn generate_key_pair() -> (PublicKey, StaticSecret) {
+        let rng = rand::thread_rng();
+        let private_key = StaticSecret::random_from_rng(rng);
+        let public_key = PublicKey::from(&private_key);
+        (public_key, private_key)
+    }
 }
 
 pub trait NodeBehavior {
     fn process_loopix_message(&self, message: Message);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_loopix_config_default() {
+        let config = LoopixConfig::default();
+        assert_eq!(config.lambda_loop, 10.0);
+        assert_eq!(config.lambda_drop, 10.0);
+        assert_eq!(config.lambda_payload, 10.0);
+        assert_eq!(config.path_length, 3);
+        assert_eq!(config.mean_delay, 0.001);
+        assert_eq!(config.lambda_loop_mix, 10.0);
+    }
+
+    #[test]
+    fn test_loopix_storage_default() {
+        let storage = LoopixStorage::default();
+        let now = SystemTime::now();
+        assert!(storage.last_loop_cover <= now);
+        assert!(storage.last_drop <= now);
+        assert!(storage.last_payload <= now);
+        assert!(storage.last_pull <= now);
+        assert!(storage.last_real <= now);
+    }
+
+    #[test]
+    fn test_loopix_storage_serialization() {
+        let storage = LoopixStorage::default();
+        let yaml = storage.to_yaml().unwrap();
+        let deserialized = LoopixStorageSave::from_str(&yaml).unwrap();
+        assert_eq!(storage, deserialized);
+    }
+
+    #[test]
+    fn test_loopix_core_new() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage.clone(), config.clone());
+        
+        assert_eq!(core.storage, storage);
+        assert_eq!(core.config, config);
+        
+        // Generate a new key pair for comparison
+        let (new_public_key, _) = LoopixCore::generate_key_pair();
+        
+        // Check that the generated public key is different
+        // This test may theoretically fail with an extremely low probability
+        assert_ne!(core.get_public_key(), &new_public_key);
+    }
+
+    #[test]
+    fn test_loopix_core_getters() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage.clone(), config.clone());
+        
+        assert_eq!(core.get_config(), &config);
+        assert_eq!(core.get_storage(), &storage);
+        assert_eq!(core.get_public_key(), &core.key_pair.0);
+    }
+
+    #[test]
+    fn test_loopix_storage_save_from_str() {
+        let storage = LoopixStorage::default();
+        let yaml = storage.to_yaml().unwrap();
+        let deserialized = LoopixStorageSave::from_str(&yaml).unwrap();
+        assert_eq!(storage, deserialized);
+    }
+
+    #[test]
+    fn test_message_creation() {
+        let (sender_public, _) = LoopixCore::generate_key_pair();
+        let (recipient_public, _) = LoopixCore::generate_key_pair();
+        let content = b"Test message".to_vec();
+        let timestamp = SystemTime::now();
+
+        let message = Message {
+            sender: sender_public,
+            recipient: recipient_public,
+            content: content.clone(),
+            timestamp,
+        };
+
+        assert_eq!(message.sender, sender_public);
+        assert_eq!(message.recipient, recipient_public);
+        assert_eq!(message.content, content);
+        assert_eq!(message.timestamp, timestamp);
+    }
 }
