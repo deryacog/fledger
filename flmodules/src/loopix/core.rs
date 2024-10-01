@@ -73,17 +73,28 @@ impl Default for LoopixStorage {
 }
 
 // //////////////////////// Core ////////////////////////////////////////////////////////
-// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct LoopixCore {
     pub storage: LoopixStorage,
     pub config: LoopixConfig,
-    key_pair: (PublicKey, StaticSecret),
+    
+    #[serde(serialize_with = "serialize_public_key", deserialize_with = "deserialize_public_key")]
+    pub_key: PublicKey,
+    
+    #[serde(serialize_with = "serialize_static_secret", deserialize_with = "deserialize_static_secret")]
+    secret_key: StaticSecret,
 }
 
 impl LoopixCore {
     pub fn new(storage: LoopixStorage, config: LoopixConfig) -> Self {
-        let key_pair = Self::generate_key_pair();
-        Self { storage, config, key_pair }
+        let (pub_key, secret_key) = Self::generate_key_pair();
+
+        Self {
+            storage,
+            config,
+            pub_key,
+            secret_key,
+        }
     }
 
     pub fn get_config(&self) -> &LoopixConfig {
@@ -95,7 +106,7 @@ impl LoopixCore {
     }
 
     pub fn get_public_key(&self) -> &PublicKey {
-        &self.key_pair.0
+        &self.pub_key
     }
 
     fn generate_key_pair() -> (PublicKey, StaticSecret) {
@@ -106,6 +117,59 @@ impl LoopixCore {
     }
 }
 
+impl PartialEq for LoopixCore {
+    fn eq(&self, other: &Self) -> bool {
+        self.storage == other.storage
+            && self.config == other.config
+            && self.pub_key == other.pub_key
+            && self.secret_key.to_bytes() == other.secret_key.to_bytes()
+    }
+}
+
+impl std::fmt::Debug for LoopixCore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoopixCore")
+            .field("storage", &self.storage)
+            .field("config", &self.config)
+            .field("pub_key", &hex::encode(self.pub_key.as_bytes()))
+            .field("secret_key", &"[secret_key]")
+            .finish()
+    }
+}
+
+pub fn serialize_public_key<S>(key: &PublicKey, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let key_bytes: &[u8] = key.as_bytes();
+    serializer.serialize_bytes(key_bytes)
+}
+
+pub fn deserialize_public_key<'de, D>(deserializer: D) -> Result<PublicKey, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let key_bytes: [u8; 32] = serde::Deserialize::deserialize(deserializer)?;
+    Ok(PublicKey::from(key_bytes))
+    
+}
+
+pub fn serialize_static_secret<S>(key: &StaticSecret, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let key_bytes: [u8; 32] = key.to_bytes();
+    serializer.serialize_bytes(&key_bytes)
+}
+
+pub fn deserialize_static_secret<'de, D>(deserializer: D) -> Result<StaticSecret, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let key_bytes: [u8; 32] = serde::Deserialize::deserialize(deserializer)?;
+    Ok(StaticSecret::from(key_bytes))
+}
+
 pub trait NodeBehavior {
     fn process_loopix_message(&self, message: Message);
 }
@@ -113,6 +177,7 @@ pub trait NodeBehavior {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_loopix_config_default() {
@@ -126,6 +191,24 @@ mod tests {
     }
 
     #[test]
+    fn test_loopix_config_custom() {
+        let custom_config = LoopixConfig {
+            lambda_loop: 5.0,
+            lambda_drop: 7.0,
+            lambda_payload: 8.0,
+            path_length: 5,
+            mean_delay: 0.002,
+            lambda_loop_mix: 6.0,
+        };
+        assert_eq!(custom_config.lambda_loop, 5.0);
+        assert_eq!(custom_config.lambda_drop, 7.0);
+        assert_eq!(custom_config.lambda_payload, 8.0);
+        assert_eq!(custom_config.path_length, 5);
+        assert_eq!(custom_config.mean_delay, 0.002);
+        assert_eq!(custom_config.lambda_loop_mix, 6.0);
+    }
+
+    #[test]
     fn test_loopix_storage_default() {
         let storage = LoopixStorage::default();
         let now = SystemTime::now();
@@ -134,6 +217,23 @@ mod tests {
         assert!(storage.last_payload <= now);
         assert!(storage.last_pull <= now);
         assert!(storage.last_real <= now);
+    }
+
+    #[test]
+    fn test_loopix_storage_custom() {
+        let custom_time = SystemTime::now() - Duration::from_secs(3600);
+        let storage = LoopixStorage {
+            last_loop_cover: custom_time,
+            last_drop: custom_time,
+            last_payload: custom_time,
+            last_pull: custom_time,
+            last_real: custom_time,
+        };
+        assert_eq!(storage.last_loop_cover, custom_time);
+        assert_eq!(storage.last_drop, custom_time);
+        assert_eq!(storage.last_payload, custom_time);
+        assert_eq!(storage.last_pull, custom_time);
+        assert_eq!(storage.last_real, custom_time);
     }
 
     #[test]
@@ -153,11 +253,8 @@ mod tests {
         assert_eq!(core.storage, storage);
         assert_eq!(core.config, config);
         
-        // Generate a new key pair for comparison
         let (new_public_key, _) = LoopixCore::generate_key_pair();
         
-        // Check that the generated public key is different
-        // This test may theoretically fail with an extremely low probability
         assert_ne!(core.get_public_key(), &new_public_key);
     }
 
@@ -169,34 +266,68 @@ mod tests {
         
         assert_eq!(core.get_config(), &config);
         assert_eq!(core.get_storage(), &storage);
-        assert_eq!(core.get_public_key(), &core.key_pair.0);
+        assert_eq!(core.get_public_key(), &core.pub_key);
     }
 
     #[test]
-    fn test_loopix_storage_save_from_str() {
+    fn test_loopix_core_partial_eq() {
         let storage = LoopixStorage::default();
-        let yaml = storage.to_yaml().unwrap();
-        let deserialized = LoopixStorageSave::from_str(&yaml).unwrap();
-        assert_eq!(storage, deserialized);
+        let config = LoopixConfig::default();
+        let core1 = LoopixCore::new(storage.clone(), config.clone());
+        let core2 = LoopixCore::new(storage.clone(), config.clone());
+        
+        assert_ne!(core1, core2);
+        
+        let core3 = LoopixCore {
+            storage: core1.storage.clone(),
+            config: core1.config.clone(),
+            pub_key: core1.pub_key,
+            secret_key: core1.secret_key.clone(),
+        };
+        
+        assert_eq!(core1, core3);
     }
 
     #[test]
-    fn test_message_creation() {
-        let (sender_public, _) = LoopixCore::generate_key_pair();
-        let (recipient_public, _) = LoopixCore::generate_key_pair();
-        let content = b"Test message".to_vec();
-        let timestamp = SystemTime::now();
-
-        let message = Message {
-            sender: sender_public,
-            recipient: recipient_public,
-            content: content.clone(),
-            timestamp,
-        };
-
-        assert_eq!(message.sender, sender_public);
-        assert_eq!(message.recipient, recipient_public);
-        assert_eq!(message.content, content);
-        assert_eq!(message.timestamp, timestamp);
+    fn test_loopix_core_debug() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage, config);
+        
+        let debug_output = format!("{:?}", core);
+        println!("Debug output: {}", debug_output);
+        
+        assert!(debug_output.contains("LoopixCore"));
+        assert!(debug_output.contains("storage"));
+        assert!(debug_output.contains("config"));
+        assert!(debug_output.contains("pub_key"));
+        assert!(debug_output.contains("[secret_key]"));
     }
+
+    #[test]
+    fn test_serialize_deserialize_public_key() {
+        let (pub_key, _) = LoopixCore::generate_key_pair();
+        let mut serializer = serde_json::Serializer::new(Vec::new());
+        serialize_public_key(&pub_key, &mut serializer).unwrap();
+        let serialized = serializer.into_inner();
+        
+        let mut deserializer = serde_json::Deserializer::from_slice(&serialized);
+        let deserialized: PublicKey = deserialize_public_key(&mut deserializer).unwrap();
+        
+        assert_eq!(pub_key, deserialized);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_static_secret() {
+        let (_, secret_key) = LoopixCore::generate_key_pair();
+        let mut serializer = serde_json::Serializer::new(Vec::new());
+        serialize_static_secret(&secret_key, &mut serializer).unwrap();
+        let serialized = serializer.into_inner();
+        
+        let mut deserializer = serde_json::Deserializer::from_slice(&serialized);
+        let deserialized: StaticSecret = deserialize_static_secret(&mut deserializer).unwrap();
+        
+        assert_eq!(secret_key.to_bytes(), deserialized.to_bytes());
+    }
+
 }

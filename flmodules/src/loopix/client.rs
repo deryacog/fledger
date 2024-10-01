@@ -1,9 +1,9 @@
 use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
 use flarch::nodeids::NodeID;
-// use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use crate::loopix::messages::Message;
 
-// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Client {
     pub core: LoopixCore,
     provider: Option<NodeID>,

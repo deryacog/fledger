@@ -1,11 +1,14 @@
 use x25519_dalek::PublicKey;
 use std::time::SystemTime;
+use serde::{Deserialize, Serialize};
 
-// Add this struct before the NodeBehavior trait
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Message {
+    #[serde(serialize_with = "crate::loopix::core::serialize_public_key", deserialize_with = "crate::loopix::core::deserialize_public_key")]
     pub sender: PublicKey,
+    #[serde(serialize_with = "crate::loopix::core::serialize_public_key", deserialize_with = "crate::loopix::core::deserialize_public_key")]
     pub recipient: PublicKey,
+    
     pub content: Vec<u8>,
     pub timestamp: SystemTime,
 }

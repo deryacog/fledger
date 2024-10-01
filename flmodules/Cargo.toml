@@ -45,6 +45,7 @@ reqwest = { version = "0.12", features = [
 ], default-features = false }
 bitflags = { version = "2", features = ["serde"] }
 x25519-dalek = "2"
+hex = "0.4.3"
 
 [dev-dependencies]
 env_logger = "0.11"
