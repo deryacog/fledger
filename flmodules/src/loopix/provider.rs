@@ -1,11 +1,11 @@
 use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
 use super::mixnode::MixnodeInterface;
 use flarch::nodeids::NodeID;
-// use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::loopix::messages::Message;
 
-// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Provider {
     pub core: LoopixCore,
     client_messages: HashMap<NodeID, Vec<Message>>, // TODO: Define Message type

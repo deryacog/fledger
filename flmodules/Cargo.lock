@@ -808,6 +808,7 @@ dependencies = [
  "flarch",
  "futures",
  "getrandom",
+ "hex",
  "itertools",
  "log",
  "names",
