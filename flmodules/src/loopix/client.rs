@@ -1,7 +1,8 @@
 use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
-use crate::loopix::messages::Message;
+use super::messages::LoopixMessage;
+
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Client {
@@ -73,7 +74,7 @@ impl Client {
 }
 
 impl NodeBehavior for Client {
-    fn process_loopix_message(&self, message: Message) {
+    fn process_loopix_message(&self, message: LoopixMessage) {
         // do nothing basically
         // TODO: Implement
     }
