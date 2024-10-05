@@ -873,6 +873,7 @@ dependencies = [
  "flarch",
  "futures",
  "getrandom",
+ "hex",
  "itertools",
  "log",
  "names",
@@ -888,6 +889,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml",
+ "x25519-dalek",
 ]
 
 [[package]]
