@@ -46,10 +46,7 @@ reqwest = { version = "0.12", features = [
 bitflags = { version = "2", features = ["serde"] }
 x25519-dalek = "2"
 hex = "0.4.3"
-<<<<<<< HEAD
-=======
 sphinx-packet = { path = "../sphinx" }
->>>>>>> 29cc460638d7cb0806d77b527a3c8ce50a777ac9
 
 [dev-dependencies]
 env_logger = "0.11"
