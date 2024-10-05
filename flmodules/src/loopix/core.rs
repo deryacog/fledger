@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use x25519_dalek::{PublicKey, StaticSecret};
-use crate::loopix::messages::Message;
 
-// //////////////////////// Config //////////////////////////////// ////////////////////////
+use super::messages::LoopixMessage;
+
+// //////////////////////// Config ///////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LoopixConfig {
     pub lambda_loop: f64,       // Loop traffic rate (user)
@@ -27,7 +28,7 @@ impl Default for LoopixConfig {
     }
 }
 
-// //////////////////////// Storage //////////////////////////////// ////////////////////////
+// //////////////////////// Storage ////////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum LoopixStorageSave {
     V1(LoopixStorage),
@@ -137,6 +138,10 @@ impl std::fmt::Debug for LoopixCore {
     }
 }
 
+<<<<<<< HEAD
+=======
+// region: Serde functions
+>>>>>>> 29cc460638d7cb0806d77b527a3c8ce50a777ac9
 pub fn serialize_public_key<S>(key: &PublicKey, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -151,7 +156,10 @@ where
 {
     let key_bytes: [u8; 32] = serde::Deserialize::deserialize(deserializer)?;
     Ok(PublicKey::from(key_bytes))
+<<<<<<< HEAD
     
+=======
+>>>>>>> 29cc460638d7cb0806d77b527a3c8ce50a777ac9
 }
 
 pub fn serialize_static_secret<S>(key: &StaticSecret, serializer: S) -> Result<S::Ok, S::Error>
@@ -169,9 +177,16 @@ where
     let key_bytes: [u8; 32] = serde::Deserialize::deserialize(deserializer)?;
     Ok(StaticSecret::from(key_bytes))
 }
+<<<<<<< HEAD
 
 pub trait NodeBehavior {
     fn process_loopix_message(&self, message: Message);
+=======
+// endregion: Serde functions
+
+pub trait NodeBehavior {
+    fn process_loopix_message(&self, message: LoopixMessage);
+>>>>>>> 29cc460638d7cb0806d77b527a3c8ce50a777ac9
 }
 
 #[cfg(test)]
