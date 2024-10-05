@@ -1,60 +1,131 @@
+use std::error::Error;
+
+use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
-use sphinx_packet::*;
+use sphinx_packet::{
+    header::delays::Delay,
+    packet::*,
+    payload::*,
+    route::*,
+};
+use tokio::time::sleep;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub enum ModuleMessage {
-    Random(crate::random_connections::messages::RandomMessage),
-    Ping(crate::ping::messages::PingMessage),
-    Loopix(LoopixMessage),
+use crate::network::messages::*;
+use super::{
+    core::*,
+    sphinx::*,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Module {
+    Network,
+    WebProxy,
+    Loopix,
 }
 
-#[derive(Serialize, Deserialize)]
+// message to put into a sphinx payload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleMessage {
+    module: Module,
+    content: Vec<u8>
+}
+
+#[derive(Clone, Debug)]
 pub enum LoopixMessage {
-    #[serde(serialize_with = "serialize_sphinx_packet", deserialize_with = "deserialize_sphinx_packet")]
-    Sphinx(SphinxPacket),
+    Input(LoopixIn),
+    Output(LoopixOut),
 }
 
-impl std::fmt::Debug for LoopixMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LoopixMessage::Sphinx(_) => write!(f, "LoopixMessage::Sphinx(...)"),
-        }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LoopixIn {
+    Sphinx(Sphinx),
+}
+
+#[derive(Debug, Clone)]
+pub enum LoopixOut {
+    ForwardToModule(ModuleMessage), // TODO I don't think this works
+    ForwardToNetwork(NetworkIn)
+}
+
+#[derive(Debug)]
+pub struct LoopixMessages {
+    pub core: LoopixCore,
+    our_id: NodeID,
+}
+
+impl LoopixMessages {
+    pub fn new(
+        storage: LoopixStorage,
+        cfg: LoopixConfig,
+        our_id: NodeID,
+    ) -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            core: LoopixCore::new(storage, cfg),
+            our_id,
+        })
     }
-}
 
-impl Clone for LoopixMessage {
-    fn clone(&self) -> Self {
-        match self {
-            LoopixMessage::Sphinx(packet) => {
-                let mut buffer = Vec::new();
-                serialize_sphinx_packet(packet, &mut serde_json::Serializer::new(&mut buffer)).unwrap();
-                let cloned_packet = deserialize_sphinx_packet(&mut serde_json::Deserializer::from_slice(&buffer)).unwrap();
-                LoopixMessage::Sphinx(cloned_packet)
+    pub async fn process_messages(&mut self, msgs: Vec<LoopixIn>) -> Vec<LoopixOut> {
+        let mut out = vec![];
+        for msg in msgs {
+            log::trace!("Got msg: {msg:?}");
+            out.extend(match msg {
+                LoopixIn::Sphinx(packet) => self.process_message(packet).await,
+            });
+        }
+        out
+    }
+
+    async fn process_message(&mut self, packet: Sphinx) -> Vec<LoopixOut> {
+        let processed = packet.inner.process(self.core.get_secret_key()).unwrap();
+        match processed {
+            ProcessedPacket::ForwardHop(next_packet, next_address, delay) => {
+                self.process_forward_hop(next_packet, next_address, delay).await
+            },
+            ProcessedPacket::FinalHop(destination, surb_id, payload) => {
+                self.process_final_hop(destination, surb_id, payload).await
             },
         }
     }
+
+    async fn process_forward_hop(&mut self, next_packet: Box<SphinxPacket>, next_address: NodeAddressBytes, delay: Delay) -> Vec<LoopixOut> {
+        sleep(delay.to_duration()).await;
+
+        let next_addr = NodeID::from(next_address.as_bytes());
+
+        let sphinx = Sphinx { inner: *next_packet };
+        // TODO: add to Network a message that takes bytes
+        
+        let message_content = serde_json::to_string(&sphinx).unwrap();
+        let network_message = NetworkIn::SendNodeMessage(next_addr, message_content);
+
+        vec![LoopixOut::ForwardToNetwork(network_message)]
+    }
+
+    async fn process_final_hop(&mut self, destination: DestinationAddressBytes, surb_id: SURBIdentifier, payload: Payload) -> Vec<LoopixOut> {
+        let dest_addr = NodeID::from(destination.as_bytes());
+        
+        if dest_addr != self.our_id {
+            return vec![];
+        }
+
+        let vec_message = payload.recover_plaintext().unwrap();
+        // TODO convert vec message into a module message
+
+        // TODO: not sure what to with identifier
+        todo!()
+    }
+
 }
 
-impl PartialEq for LoopixMessage {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (LoopixMessage::Sphinx(p1), LoopixMessage::Sphinx(p2)) => p1.to_bytes() == p2.to_bytes(),
-        }
+impl From<LoopixIn> for LoopixMessage {
+    fn from(msg: LoopixIn) -> Self {
+        LoopixMessage::Input(msg)
     }
 }
 
-pub fn serialize_sphinx_packet<S>(packet: &SphinxPacket, serializer: S) -> std::result::Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let bytes = packet.to_bytes();
-    serializer.serialize_bytes(&bytes)
-}
-
-pub fn deserialize_sphinx_packet<'de, D>(deserializer: D) -> std::result::Result<SphinxPacket, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let bytes = Vec::<u8>::deserialize(deserializer)?;
-    SphinxPacket::from_bytes(&bytes).map_err(serde::de::Error::custom)
+impl From<LoopixOut> for LoopixMessage {
+    fn from(msg: LoopixOut) -> Self {
+        LoopixMessage::Output(msg)
+    }
 }

@@ -110,6 +110,11 @@ impl LoopixCore {
         &self.pub_key
     }
 
+    pub fn get_secret_key(&self) -> &StaticSecret {
+        &self.secret_key
+    }
+
+
     fn generate_key_pair() -> (PublicKey, StaticSecret) {
         let rng = rand::thread_rng();
         let private_key = StaticSecret::random_from_rng(rng);

@@ -5,4 +5,5 @@ pub mod client;
 pub mod mixnode;
 
 pub mod messages;
-pub mod broker;
+
+pub mod sphinx;

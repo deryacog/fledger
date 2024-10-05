@@ -1,24 +1,25 @@
 use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
+use super::messages::LoopixMessage;
 use super::mixnode::MixnodeInterface;
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::messages::LoopixMessage;
+use super::sphinx::Sphinx;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Provider {
     pub core: LoopixCore,
-    client_messages: HashMap<NodeID, Vec<LoopixMessage>>, // TODO: Define Message type
+    client_messages: HashMap<NodeID, Vec<Sphinx>>, // TODO: Define Message type
 }
 
 pub trait ProviderInterface: MixnodeInterface {
     fn subscribe_client(&mut self, client_id: NodeID);
 
-    fn store_client_message(&mut self, client_id: NodeID, message: LoopixMessage);
+    fn store_client_message(&mut self, client_id: NodeID, message: Sphinx);
 
-    fn get_client_messages(&self) -> HashMap<NodeID, Vec<LoopixMessage>>;
-    fn create_dummy_message(&self) -> LoopixMessage;
-    fn send_pull_reply(&self, client_id: NodeID, message: LoopixMessage);
+    fn get_client_messages(&self) -> HashMap<NodeID, Vec<Sphinx>>;
+    fn create_dummy_message(&self) -> Sphinx;
+    fn send_pull_reply(&self, client_id: NodeID, message: Sphinx);
 }
 
 impl Provider {
@@ -26,22 +27,22 @@ impl Provider {
         // TODO: Implement client subscription logic
     }
 
-    fn store_client_message(&mut self, client_id: NodeID, message: LoopixMessage) {
+    fn store_client_message(&mut self, client_id: NodeID, message: Sphinx) {
         // TODO: Implement storing client messages
     }
 
-    fn send_pull_reply(&self, client_id: NodeID, message: LoopixMessage) {
+    fn send_pull_reply(&self, client_id: NodeID, message: Sphinx) {
         // get_client_messages and check if at min
         // TODO: Implement sending pull reply to client
     }
 
-    fn get_client_messages(&self) -> HashMap<NodeID, Vec<LoopixMessage>> {
+    fn get_client_messages(&self) -> HashMap<NodeID, Vec<Sphinx>> {
         // TODO: Implement retrieving client messages
         HashMap::new()
     }
 
     // Any additional provider-specific methods can be added here
-    fn process_loopix_message(&self, message: LoopixMessage) {
+    fn process_loopix_message(&self, message: Sphinx) {
         // TODO: Implement processing loopix message
         // if for client storage
         // if not for client, rela
@@ -77,23 +78,23 @@ impl ProviderInterface for Provider {
         self.client_messages.entry(client_id).or_insert(Vec::new());
     }
 
-    fn store_client_message(&mut self, client_id: NodeID, message: LoopixMessage) {
+    fn store_client_message(&mut self, client_id: NodeID, message: Sphinx) {
         if let Some(messages) = self.client_messages.get_mut(&client_id) {
             messages.push(message);
         }
     }
 
-    fn get_client_messages(&self) -> HashMap<NodeID, Vec<LoopixMessage>> {
+    fn get_client_messages(&self) -> HashMap<NodeID, Vec<Sphinx>> {
         self.client_messages.clone()
     }
 
-    fn create_dummy_message(&self) -> LoopixMessage {
+    fn create_dummy_message(&self) -> Sphinx {
         // Dummy implementation, replace with actual dummy message creation logic
-        // LoopixMessage::default()
+        // Sphinx::default()
         todo!()
     }
 
-    fn send_pull_reply(&self, client_id: NodeID, message: LoopixMessage) {
+    fn send_pull_reply(&self, client_id: NodeID, message: Sphinx) {
         // Dummy implementation, replace with actual send logic
         println!("Sending pull reply to client {:?}: {:?}", client_id, message);
     }

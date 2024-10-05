@@ -929,6 +929,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "bimap",
+ "bincode",
  "bitflags 2.6.0",
  "bytes",
  "ed25519-compact",
