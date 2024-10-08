@@ -10,25 +10,11 @@ use sphinx_packet::{
 };
 use tokio::time::sleep;
 
-use crate::network::messages::*;
+use crate::{network::messages::*, random_connections::messages::ModuleMessage};
 use super::{
     core::*,
     sphinx::*,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Module {
-    Network,
-    WebProxy,
-    Loopix,
-}
-
-// message to put into a sphinx payload
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModuleMessage {
-    module: Module,
-    content: Vec<u8>
-}
 
 #[derive(Clone, Debug)]
 pub enum LoopixMessage {
@@ -36,15 +22,21 @@ pub enum LoopixMessage {
     Output(LoopixOut),
 }
 
+// The messages Loopix module might receive
+// There are two options:
+// 1. To loopix for processing: this type of message is received as ModuleMessage{ module: "Loopix", message: Sphinx packet } from Network module
+//    (eventually from other node's Loopix module)
+// 2. ModuleMessage from other modules (e.g., webproxy) that needs to be wrapped in a sphinx packet and sent to the network module
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LoopixIn {
-    Sphinx(Sphinx),
+    // The Loopix module will know what to do with the message based on the 'module' field of ModuleMessage
+    ModuleMessage(ModuleMessage),
 }
 
 #[derive(Debug, Clone)]
 pub enum LoopixOut {
-    ForwardToModule(ModuleMessage), // TODO I don't think this works
-    ForwardToNetwork(NetworkIn)
+    NodeModuleMessage(NodeID, ModuleMessage),
+    ForwardToModule(ModuleMessage),
 }
 
 #[derive(Debug)]
@@ -65,57 +57,78 @@ impl LoopixMessages {
         })
     }
 
-    pub async fn process_messages(&mut self, msgs: Vec<LoopixIn>) -> Vec<LoopixOut> {
-        let mut out = vec![];
-        for msg in msgs {
-            log::trace!("Got msg: {msg:?}");
-            out.extend(match msg {
-                LoopixIn::Sphinx(packet) => self.process_message(packet).await,
-            });
-        }
-        out
+    pub fn process_messages(&mut self, msgs: Vec<LoopixIn>) -> Vec<LoopixOut> {
+        msgs.into_iter()
+            .flat_map(|msg| self.process_message(msg))
+            .collect()
     }
 
-    async fn process_message(&mut self, packet: Sphinx) -> Vec<LoopixOut> {
-        let processed = packet.inner.process(self.core.get_secret_key()).unwrap();
-        match processed {
+    fn process_message(&mut self, msg: LoopixIn) -> Vec<LoopixOut> {
+        match msg {
+            LoopixIn::ModuleMessage(module_msg) => {
+                if module_msg.module == "loopix" {
+                    // This is a Sphinx packet from another Loopix module
+                    if let Ok(sphinx) = serde_json::from_str::<Sphinx>(&module_msg.msg) {
+                        self.process_sphinx_packet(sphinx)
+                    } else {
+                        log::error!("Failed to deserialize Sphinx packet");
+                        vec![]
+                    }
+                } else {
+                    self.process_other_module_message(module_msg)
+                }
+            }
+        }
+    }
+
+    fn process_sphinx_packet(&mut self, sphinx_packet: Sphinx) -> Vec<LoopixOut> {
+        match self.core.process_packet(sphinx_packet) {
             ProcessedPacket::ForwardHop(next_packet, next_address, delay) => {
-                self.process_forward_hop(next_packet, next_address, delay).await
-            },
+                // Schedule the packet to be sent after the delay
+                // TODO need to check how they do the queue
+                tokio::spawn(async move {
+                    tokio::time::sleep(delay.to_duration()).await;
+                    // Prepare packet for network module
+                    let next_node_id = NodeID::from(next_address.as_bytes());
+                    let module_message = ModuleMessage {
+                        module: "loopix".to_string(),
+                        msg: serde_json::to_string(&Sphinx { inner: *next_packet }).unwrap(),
+                    };
+                    // Return the message to be sent to the network module
+                    vec![LoopixOut::NodeModuleMessage(next_node_id, module_message)]
+                });
+                vec![]
+            }
             ProcessedPacket::FinalHop(destination, surb_id, payload) => {
-                self.process_final_hop(destination, surb_id, payload).await
-            },
+                // Check if the final destination matches our ID
+                let dest = NodeID::from(destination.as_bytes());
+                if dest == self.our_id {
+                    // Extract the original message and forward it to the appropriate module
+                    if let Ok(module_message) = serde_json::from_str(std::str::from_utf8(&payload.recover_plaintext().unwrap()).unwrap()) {
+                        vec![LoopixOut::ForwardToModule(module_message)]
+                    } else {
+                        log::error!("Failed to deserialize payload");
+                        vec![]
+                    }
+                } else {
+                    log::warn!("Received a FinalHop packet not intended for this node");
+                    vec![]
+                }
+            }
         }
     }
 
-    async fn process_forward_hop(&mut self, next_packet: Box<SphinxPacket>, next_address: NodeAddressBytes, delay: Delay) -> Vec<LoopixOut> {
-        sleep(delay.to_duration()).await;
-
-        let next_addr = NodeID::from(next_address.as_bytes());
-
-        let sphinx = Sphinx { inner: *next_packet };
-        // TODO: add to Network a message that takes bytes
+    fn process_other_module_message(&mut self, module_msg: ModuleMessage) -> Vec<LoopixOut> {
+        // Create a new Sphinx packet
+        let (packet, recipient) = self.core.create_sphinx_packet(module_msg);
         
-        let message_content = serde_json::to_string(&sphinx).unwrap();
-        let network_message = NetworkIn::SendNodeMessage(next_addr, message_content);
-
-        vec![LoopixOut::ForwardToNetwork(network_message)]
+        // Send the packet to the network module
+        let loopix_message = ModuleMessage {
+            module: "loopix".to_string(),
+            msg: serde_json::to_string(&packet).unwrap(),
+        };
+        vec![LoopixOut::NodeModuleMessage(recipient, loopix_message)]
     }
-
-    async fn process_final_hop(&mut self, destination: DestinationAddressBytes, surb_id: SURBIdentifier, payload: Payload) -> Vec<LoopixOut> {
-        let dest_addr = NodeID::from(destination.as_bytes());
-        
-        if dest_addr != self.our_id {
-            return vec![];
-        }
-
-        let vec_message = payload.recover_plaintext().unwrap();
-        // TODO convert vec message into a module message
-
-        // TODO: not sure what to with identifier
-        todo!()
-    }
-
 }
 
 impl From<LoopixIn> for LoopixMessage {

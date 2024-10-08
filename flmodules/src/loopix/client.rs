@@ -1,4 +1,4 @@
-use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
+use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
 use super::messages::LoopixMessage;
@@ -74,7 +74,7 @@ impl Client {
 }
 
 impl NodeBehavior for Client {
-    fn process_loopix_message(&self, message: LoopixMessage) {
+    fn process_packet(&self, sphinx_packet: Sphinx){
         // do nothing basically
         // TODO: Implement
     }

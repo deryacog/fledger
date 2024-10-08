@@ -101,7 +101,7 @@ impl ProviderInterface for Provider {
 }
 
 impl NodeBehavior for Provider {
-    fn process_loopix_message(&self, message: LoopixMessage) {
+    fn process_packet(&self, sphinx_packet: Sphinx){
         // route or store
         // TODO: Implement
     }
