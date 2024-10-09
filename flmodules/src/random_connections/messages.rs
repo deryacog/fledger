@@ -7,6 +7,8 @@ use crate::nodeconfig::NodeInfo;
 
 use super::core::RandomStorage;
 
+pub const MODULE_NAME: &str = "RandomConnections";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum NodeMessage {
     Module(ModuleMessage),
@@ -27,6 +29,7 @@ pub enum RandomMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RandomIn {
+    ModuleMessage(ModuleMessage),
     NodeList(Vec<NodeInfo>),
     NodeFailure(NodeID),
     NodeConnected(NodeID),
@@ -38,6 +41,7 @@ pub enum RandomIn {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RandomOut {
+    ModuleMessage(ModuleMessage),
     ConnectNode(NodeID),
     DisconnectNode(NodeID),
     ListUpdate(NodeIDs),
@@ -115,6 +119,16 @@ impl RandomConnections {
                         RandomOut::DisconnectNode(dst),
                         RandomOut::ListUpdate(self.storage.connected.get_nodes()),
                     ]
+                }
+            }
+            RandomIn::ModuleMessage(module_msg) => {
+                if module_msg.module == MODULE_NAME {
+                    match serde_json::from_str(&module_msg.msg) {
+                        Ok(parsed_msg) => self.process_message(parsed_msg),
+                        Err(_) => vec![],
+                    }
+                } else {
+                    vec![]
                 }
             }
         };

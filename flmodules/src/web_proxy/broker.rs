@@ -16,11 +16,9 @@ use flarch::{
 
 use super::{
     core::{Counters, WebProxyConfig, WebProxyStorage, WebProxyStorageSave},
-    messages::{MessageNode, WebProxyIn, WebProxyMessage, WebProxyMessages, WebProxyOut},
+    messages::{MessageNode, WebProxyIn, WebProxyMessage, WebProxyMessages, WebProxyOut, MODULE_NAME},
     response::Response,
 };
-
-const MODULE_NAME: &str = "WebProxy";
 
 #[derive(Debug, Error)]
 pub enum WebProxyError {

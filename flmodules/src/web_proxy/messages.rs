@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 
 use crate::nodeconfig::NodeInfo;
+use crate::random_connections::messages::ModuleMessage;
 use crate::Modules;
+
+pub const MODULE_NAME: &str = "WebProxy";
 
 use super::{
     broker::WebProxyError,
@@ -37,16 +40,19 @@ pub enum WebProxyMessage {
 }
 
 /// All possible calls TO this module.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WebProxyIn {
+    ModuleMessage(ModuleMessage),
     Node(NodeID, MessageNode),
     NodeInfoConnected(Vec<NodeInfo>),
+    #[serde(skip)] // TODO
     RequestGet(U256, String, Sender<Bytes>),
 }
 
 /// All possible replies FROM this module.
 #[derive(Debug, Clone)]
 pub enum WebProxyOut {
+    ModuleMessage(ModuleMessage),
     Node(NodeID, MessageNode),
     ResponseGet(NodeID, U256, ResponseHeader),
     UpdateStorage(WebProxyStorage),
@@ -80,6 +86,16 @@ impl WebProxyMessages {
                 WebProxyIn::Node(src, node_msg) => self.process_node_message(src, node_msg),
                 WebProxyIn::NodeInfoConnected(ids) => self.node_list(ids),
                 WebProxyIn::RequestGet(rnd, url, tx) => self.request_get(rnd, url, tx),
+                WebProxyIn::ModuleMessage(module_msg) => {
+                    if module_msg.module == MODULE_NAME {
+                        match serde_json::from_str(&module_msg.msg) {
+                            Ok(parsed_msg) => self.process_messages(parsed_msg),
+                            Err(_) => vec![]
+                        }
+                    } else {
+                        vec![]
+                    }
+                }
             })
             .flatten()
             .collect()
