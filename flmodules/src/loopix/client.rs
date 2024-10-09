@@ -1,3 +1,5 @@
+use crate::random_connections::messages::ModuleMessage;
+
 use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
@@ -70,6 +72,10 @@ impl Client {
     pub fn create_payload_message(&self, destination: NodeID) {
         // periodically
         // TODO: Implement payload message creation
+    }
+
+    pub fn create_sphinx_packet(&self, module_msg: ModuleMessage){
+        !todo!()
     }
 }
 

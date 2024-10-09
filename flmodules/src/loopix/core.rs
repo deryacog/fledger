@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use super::{messages::LoopixMessage, sphinx::Sphinx};
+use super::{sphinx::Sphinx};
 
 // //////////////////////// Config ///////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
