@@ -1,8 +1,11 @@
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::route::{NodeAddressBytes, DestinationAddressBytes};
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 use x25519_dalek::{PublicKey, StaticSecret};
+use concurrent_queue::ConcurrentQueue;
+
+use crate::random_connections::messages::ModuleMessage;
 
 use super::{sphinx::Sphinx};
 
@@ -76,7 +79,7 @@ impl Default for LoopixStorage {
 }
 
 // //////////////////////// Core ////////////////////////////////////////////////////////
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct LoopixCore {
     pub storage: LoopixStorage,
     pub config: LoopixConfig,
@@ -86,10 +89,32 @@ pub struct LoopixCore {
     
     #[serde(serialize_with = "serialize_static_secret", deserialize_with = "deserialize_static_secret")]
     secret_key: StaticSecret,
+
+    #[serde(skip, default = "default_queue")]
+    queue: Arc<ConcurrentQueue<ModuleMessage>>,
+    max_queue_size: usize,
+}
+
+fn default_queue() -> Arc<ConcurrentQueue<ModuleMessage>> {
+    Arc::new(ConcurrentQueue::bounded(100))
+}
+
+impl Clone for LoopixCore {
+    /// DOES NOT COPY THE CONTENTS OF THE QUEUE
+    fn clone(&self) -> Self { 
+        Self {
+            storage: self.storage.clone(),
+            config: self.config.clone(),
+            pub_key: self.pub_key,
+            secret_key: self.secret_key.clone(),
+            queue: Arc::new(ConcurrentQueue::bounded(self.max_queue_size)),
+            max_queue_size: self.max_queue_size,
+        }
+    }
 }
 
 impl LoopixCore {
-    pub fn new(storage: LoopixStorage, config: LoopixConfig) -> Self {
+    pub fn new(storage: LoopixStorage, config: LoopixConfig, max_queue_size: usize) -> Self {
         let (pub_key, secret_key) = Self::generate_key_pair();
 
         Self {
@@ -97,7 +122,21 @@ impl LoopixCore {
             config,
             pub_key,
             secret_key,
+            queue: Arc::new(ConcurrentQueue::bounded(max_queue_size)),
+            max_queue_size,
         }
+    }
+
+    pub fn enqueue_packet(&self, packet: ModuleMessage) -> Result<(), &'static str> {
+        self.queue.push(packet).map_err(|_| "Queue is full")
+    }
+
+    pub fn is_queue_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn dequeue_packet(&self) -> Option<ModuleMessage> {
+        self.queue.pop().ok()
     }
 
     // TODO maybe errors
@@ -139,7 +178,6 @@ impl LoopixCore {
     pub fn get_secret_key(&self) -> &StaticSecret {
         &self.secret_key
     }
-
 
     fn generate_key_pair() -> (PublicKey, StaticSecret) {
         let rng = rand::thread_rng();
@@ -282,7 +320,7 @@ mod tests {
     fn test_loopix_core_new() {
         let storage = LoopixStorage::default();
         let config = LoopixConfig::default();
-        let core = LoopixCore::new(storage.clone(), config.clone());
+        let core = LoopixCore::new(storage.clone(), config.clone(), 100);
         
         assert_eq!(core.storage, storage);
         assert_eq!(core.config, config);
@@ -296,19 +334,18 @@ mod tests {
     fn test_loopix_core_getters() {
         let storage = LoopixStorage::default();
         let config = LoopixConfig::default();
-        let core = LoopixCore::new(storage.clone(), config.clone());
+        let core = LoopixCore::new(storage.clone(), config.clone(), 100);
         
         assert_eq!(core.get_config(), &config);
         assert_eq!(core.get_storage(), &storage);
         assert_eq!(core.get_public_key(), &core.pub_key);
     }
-
     #[test]
     fn test_loopix_core_partial_eq() {
         let storage = LoopixStorage::default();
         let config = LoopixConfig::default();
-        let core1 = LoopixCore::new(storage.clone(), config.clone());
-        let core2 = LoopixCore::new(storage.clone(), config.clone());
+        let core1 = LoopixCore::new(storage.clone(), config.clone(), 100);
+        let core2 = LoopixCore::new(storage.clone(), config.clone(), 100);
         
         assert_ne!(core1, core2);
         
@@ -317,6 +354,8 @@ mod tests {
             config: core1.config.clone(),
             pub_key: core1.pub_key,
             secret_key: core1.secret_key.clone(),
+            queue: Arc::new(ConcurrentQueue::bounded(100)),
+            max_queue_size: 100,
         };
         
         assert_eq!(core1, core3);
@@ -326,7 +365,7 @@ mod tests {
     fn test_loopix_core_debug() {
         let storage = LoopixStorage::default();
         let config = LoopixConfig::default();
-        let core = LoopixCore::new(storage, config);
+        let core = LoopixCore::new(storage, config, 100);
         
         let debug_output = format!("{:?}", core);
         println!("Debug output: {}", debug_output);
@@ -409,4 +448,88 @@ mod tests {
         let result_node_id = LoopixCore::node_id_from_destination_address(dest_address);
         assert_eq!(result_node_id, original_node_id);
     }
+
+    #[test]
+    fn test_is_queue_empty() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage.clone(), config.clone(), 2);
+
+        assert!(core.is_queue_empty());
+        
+        // TODO maybe add a default/clone function to module message
+        let packet = ModuleMessage {
+            module: "test_module".to_string(),
+            msg: "test_message".to_string(),
+        };
+        core.enqueue_packet(packet).unwrap();
+        
+        assert!(!core.is_queue_empty());
+        core.dequeue_packet();
+        assert!(core.is_queue_empty());
+    }
+
+    #[test]
+    fn test_enqueue_packet() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage.clone(), config.clone(), 2);
+
+        let packet1 = ModuleMessage {
+            module: "test_module_1".to_string(),
+            msg: "test_message_1".to_string(),
+        };
+        let packet2 = ModuleMessage {
+            module: "test_module_2".to_string(),
+            msg: "test_message_2".to_string(),
+        };
+        
+        assert!(core.enqueue_packet(packet1).is_ok());
+        assert!(core.enqueue_packet(packet2).is_ok());
+        assert!(core.is_queue_empty() == false);
+    }
+
+    #[test]
+    fn test_dequeue_packet() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage.clone(), config.clone(), 2);
+
+        let packet1 = ModuleMessage {
+            module: "test_module_1".to_string(),
+            msg: "test_message_1".to_string(),
+        };
+        let packet2 = ModuleMessage {
+            module: "test_module_2".to_string(),
+            msg: "test_message_2".to_string(),
+        };
+        
+        core.enqueue_packet(packet1).unwrap();
+        core.enqueue_packet(packet2).unwrap();
+
+        assert_eq!(core.dequeue_packet().is_some(), true);
+        assert_eq!(core.dequeue_packet().is_some(), true);
+        assert_eq!(core.dequeue_packet().is_none(), true);
+    }
+
+    #[test]
+    fn test_queue_full() {
+        let storage = LoopixStorage::default();
+        let config = LoopixConfig::default();
+        let core = LoopixCore::new(storage.clone(), config.clone(), 1);
+
+        let packet1 = ModuleMessage {
+            module: "test_module_1".to_string(),
+            msg: "test_message_1".to_string(),
+        };
+        let packet2 = ModuleMessage {
+            module: "test_module_2".to_string(),
+            msg: "test_message_2".to_string(),
+        };
+        
+        assert!(core.enqueue_packet(packet1).is_ok());
+        assert!(core.enqueue_packet(packet2).is_err());
+    }
+
+
 }

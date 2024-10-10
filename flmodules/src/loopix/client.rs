@@ -14,7 +14,7 @@ pub struct Client {
 }
 
 pub trait ClientInterface {
-    fn new() -> Self;
+    fn new(max_queue_size: usize) -> Self;
 
     fn register_provider(&mut self, provider: NodeID);
     fn get_provider(&self) -> Option<NodeID>;
@@ -28,7 +28,7 @@ pub trait ClientInterface {
 }
 
 impl Client {
-    pub fn new() -> Self {
+    pub fn new(max_queue_size: usize) -> Self {
         Self {
             core: LoopixCore::new(
                 LoopixStorage::default(),
@@ -40,6 +40,7 @@ impl Client {
                     mean_delay: 0.001,
                     lambda_loop_mix: 0.0,
                 },
+                max_queue_size,
             ),
             provider: None,
         }
@@ -75,6 +76,7 @@ impl Client {
     }
 
     pub fn create_sphinx_packet(&self, module_msg: ModuleMessage){
+        
         !todo!()
     }
 }

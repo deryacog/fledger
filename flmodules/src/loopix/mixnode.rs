@@ -10,7 +10,7 @@ pub struct Mixnode {
 }
 
 pub trait MixnodeInterface {
-    fn new() -> Self;
+    fn new(max_queue_size: usize) -> Self;
 
     fn create_loop_message(&self, node_id: NodeID) {
         // Default implementation
@@ -24,7 +24,7 @@ pub trait MixnodeInterface {
 }
 
 impl MixnodeInterface for Mixnode {
-    fn new() -> Self {
+    fn new(max_queue_size: usize) -> Self {
         // TODO: Generate key pair
         Self {
             core: LoopixCore::new(
@@ -37,6 +37,7 @@ impl MixnodeInterface for Mixnode {
                     mean_delay: 0.001,
                     lambda_loop_mix: 500.0,
                 },
+                max_queue_size,
             ),
         }
     }

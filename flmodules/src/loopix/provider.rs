@@ -52,7 +52,7 @@ impl Provider {
 }
 
 impl MixnodeInterface for Provider {
-    fn new() -> Self {
+    fn new(max_queue_size: usize) -> Self {
         // TODO: Generate key pair
         Self {
             core: LoopixCore::new(
@@ -65,6 +65,7 @@ impl MixnodeInterface for Provider {
                     mean_delay: 0.001,
                     lambda_loop_mix: 500.0,
                 },
+                max_queue_size,
             ),
             client_messages: HashMap::new(),
         }
