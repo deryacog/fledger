@@ -1,4 +1,4 @@
-use crate::random_connections::messages::ModuleMessage;
+use super::super::ModuleMessage;
 
 use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;

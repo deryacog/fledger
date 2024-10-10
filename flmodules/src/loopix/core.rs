@@ -5,7 +5,7 @@ use std::{sync::Arc, time::SystemTime};
 use x25519_dalek::{PublicKey, StaticSecret};
 use concurrent_queue::ConcurrentQueue;
 
-use crate::random_connections::messages::ModuleMessage;
+use super::super::ModuleMessage;
 
 use super::{sphinx::Sphinx};
 

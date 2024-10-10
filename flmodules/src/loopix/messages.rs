@@ -10,7 +10,8 @@ use sphinx_packet::{
 };
 use tokio::time::sleep;
 
-use crate::{network::messages::*, random_connections::messages::ModuleMessage};
+use crate::network::messages::*;
+use super::super::ModuleMessage;
 use super::{
     client::{self, Client}, core::*, mixnode::Mixnode, provider::{self, Provider, ProviderInterface}, sphinx::*
 };
