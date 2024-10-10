@@ -1,4 +1,6 @@
+use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
+use sphinx_packet::route::{NodeAddressBytes, DestinationAddressBytes};
 use std::time::SystemTime;
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -96,6 +98,18 @@ impl LoopixCore {
             pub_key,
             secret_key,
         }
+    }
+
+    // TODO maybe errors
+    pub fn node_address_from_node_id(node_id: NodeID) -> NodeAddressBytes {
+        let node_id_bytes = node_id.to_bytes();
+        NodeAddressBytes::from_bytes(node_id_bytes)
+    }
+
+    // TODO maybe errors
+    pub fn node_id_from_destination_address(dest_addr: DestinationAddressBytes) -> NodeID {
+        let dest_bytes = dest_addr.as_bytes();
+        NodeID::from(dest_bytes)
     }
 
     pub fn get_config(&self) -> &LoopixConfig {
@@ -336,6 +350,22 @@ mod tests {
         let deserialized: StaticSecret = deserialize_static_secret(&mut deserializer).unwrap();
         
         assert_eq!(secret_key.to_bytes(), deserialized.to_bytes());
+    }
+
+    #[test]
+    fn test_node_address_from_node_id() {
+        let node_id = NodeID::rnd();
+        let node_address = LoopixCore::node_address_from_node_id(node_id.clone());
+        
+        assert_eq!(node_address.as_bytes(), node_id.to_bytes());
+    }
+
+    #[test]
+    fn test_node_id_from_destination_address() {
+        let node_id = NodeID::rnd();
+        let dest_address = DestinationAddressBytes::from_bytes(node_id.to_bytes());
+        let result_node_id = LoopixCore::node_id_from_destination_address(dest_address);
+        assert_eq!(result_node_id, node_id);
     }
 
 }
