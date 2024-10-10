@@ -6,7 +6,7 @@ use flarch::{
 };
 
 use crate::{
-    random_connections::messages::{ModuleMessage, RandomIn, RandomMessage, RandomOut},
+    random_connections::messages::{RandomIn, RandomMessage, RandomOut},
     timer::TimerMessage,
 };
 
@@ -14,6 +14,8 @@ use super::{
     messages::{MessageNode, Ping, PingConfig, PingIn, PingMessage, PingOut},
     core::PingStorage,
 };
+
+use super::super::ModuleMessage;
 
 const MODULE_NAME: &str = "Ping";
 

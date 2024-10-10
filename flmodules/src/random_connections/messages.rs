@@ -7,18 +7,14 @@ use crate::nodeconfig::NodeInfo;
 
 use super::core::RandomStorage;
 
+use super::super::ModuleMessage;
+
 pub const MODULE_NAME: &str = "RandomConnections";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum NodeMessage {
     Module(ModuleMessage),
     DropConnection,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ModuleMessage {
-    pub module: String,
-    pub msg: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

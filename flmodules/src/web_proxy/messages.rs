@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 
 use crate::nodeconfig::NodeInfo;
-use crate::random_connections::messages::ModuleMessage;
 use crate::Modules;
+
+use super::super::ModuleMessage;
 
 pub const MODULE_NAME: &str = "WebProxy";
 

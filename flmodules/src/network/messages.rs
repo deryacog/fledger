@@ -33,8 +33,10 @@ use crate::{
     network::signal::{
         MessageAnnounce, NodeStat, WSSignalMessageFromNode, WSSignalMessageToNode, SIGNAL_VERSION,
     },
-    nodeconfig::{NodeConfig, NodeInfo}, random_connections::messages::ModuleMessage,
+    nodeconfig::{NodeConfig, NodeInfo},
 };
+
+use super::super::ModuleMessage;
 
 
 #[allow(clippy::large_enum_variant)]
