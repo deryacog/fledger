@@ -107,9 +107,21 @@ impl LoopixCore {
     }
 
     // TODO maybe errors
+    pub fn node_id_from_node_address(node_address: NodeAddressBytes) -> NodeID {
+        let node_address_bytes = node_address.as_bytes();
+        NodeID::from(node_address_bytes)
+    }
+
+    // TODO maybe errors
     pub fn node_id_from_destination_address(dest_addr: DestinationAddressBytes) -> NodeID {
         let dest_bytes = dest_addr.as_bytes();
         NodeID::from(dest_bytes)
+    }
+
+    // TODO maybe errors
+    pub fn destination_address_from_node_id(node_id: NodeID) -> DestinationAddressBytes {
+        let node_id_bytes = node_id.to_bytes();
+        DestinationAddressBytes::from_bytes(node_id_bytes)
     }
 
     pub fn get_config(&self) -> &LoopixConfig {
@@ -356,8 +368,15 @@ mod tests {
     fn test_node_address_from_node_id() {
         let node_id = NodeID::rnd();
         let node_address = LoopixCore::node_address_from_node_id(node_id.clone());
-        
         assert_eq!(node_address.as_bytes(), node_id.to_bytes());
+    }
+
+    #[test]
+    fn test_node_id_from_node_address() {
+        let node_id = NodeID::rnd();
+        let node_address = NodeAddressBytes::from_bytes(node_id.to_bytes());
+        let result_node_id = LoopixCore::node_id_from_node_address(node_address);
+        assert_eq!(result_node_id, node_id);
     }
 
     #[test]
@@ -368,4 +387,26 @@ mod tests {
         assert_eq!(result_node_id, node_id);
     }
 
+    #[test]
+    fn test_destination_address_from_node_id() {
+        let node_id = NodeID::rnd();
+        let dest_address = LoopixCore::destination_address_from_node_id(node_id.clone());
+        assert_eq!(dest_address.as_bytes(), node_id.to_bytes());
+    }
+
+    #[test]
+    fn test_node_id_to_node_address_and_back() {
+        let original_node_id = NodeID::rnd();
+        let node_address = LoopixCore::node_address_from_node_id(original_node_id.clone());
+        let result_node_id = LoopixCore::node_id_from_node_address(node_address);
+        assert_eq!(result_node_id, original_node_id);
+    }
+
+    #[test]
+    fn test_node_id_to_destination_address_and_back() {
+        let original_node_id = NodeID::rnd();
+        let dest_address = LoopixCore::destination_address_from_node_id(original_node_id.clone());
+        let result_node_id = LoopixCore::node_id_from_destination_address(dest_address);
+        assert_eq!(result_node_id, original_node_id);
+    }
 }
