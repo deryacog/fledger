@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::sync::Arc;
 
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
@@ -12,8 +13,9 @@ use tokio::time::sleep;
 
 use crate::network::messages::*;
 use super::super::ModuleMessage;
+use super::mixnode;
 use super::{
-    client::{self, Client}, core::*, mixnode::Mixnode, provider::{self, Provider, ProviderInterface}, sphinx::*
+    client::Client, core::*, mixnode::{Mixnode, MixnodeInterface}, provider::{Provider, ProviderInterface}, sphinx::*
 };
 
 #[derive(Debug, Clone)]
@@ -24,7 +26,7 @@ pub enum NodeType {
 }
 
 impl NodeType {
-    pub fn core(&self) -> &LoopixCore {
+    pub fn core(&self) -> &Arc<LoopixCore> {
         match self {
             NodeType::Client(client) => &client.core,
             NodeType::Mixnode(mixnode) => &mixnode.core,
@@ -32,34 +34,21 @@ impl NodeType {
         }
     }
 
-    pub fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeAddressBytes, delay: Delay) -> Vec<LoopixOut> {
+    pub fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay){
         match self {
-            NodeType::Client(_) => vec![],
-            NodeType::Mixnode(_)=> {
-                // Schedule the packet to be sent after the delay
-                // TODO need to check how they do the queue
-                tokio::spawn(async move {
-                    tokio::time::sleep(delay.to_duration()).await;
-                    // Prepare packet for network module
-                    let next_node_id = NodeID::from(next_address.as_bytes());
-                    let module_message = ModuleMessage {
-                        module: "loopix".to_string(),
-                        msg: serde_json::to_string(&Sphinx { inner: *next_packet }).unwrap(),
-                    };
-                    // Return the message to be sent to the network module
-                    vec![LoopixOut::NodeModuleMessage(next_node_id, module_message)]
-                });
-                vec![]
+            NodeType::Client(_) => {},
+            NodeType::Mixnode(mixnode) => {
+                mixnode.process_forward_hop(next_packet, next_address, delay);
             },
             NodeType::Provider(provider) => {
                 // provider.store_client_message(next_address, payload);
                 // TODO store client message and then or forward the message
-                vec![] // TODO pull request
+                // TODO pull request
             }
         }
     }
 
-    pub fn process_final_hop(&self, destination: NodeID, surb_id: [u8; 16], payload: Payload) -> Vec<LoopixOut> {
+    pub fn process_final_hop(&self, destination: NodeID, surb_id: [u8; 16], payload: Payload)-> Vec<LoopixOut>{
         match self {
             NodeType::Mixnode(_) | NodeType::Provider(_)=> vec![], // TODO I guess this is dropping for loop messages?
             NodeType::Client(_) => {
@@ -70,7 +59,6 @@ impl NodeType {
                     log::error!("Failed to deserialize payload");
                     vec![]
                 }
- 
             },
         }
     }
@@ -147,7 +135,8 @@ impl LoopixMessages {
                 if module_msg.module == "loopix" {
                     // This is a Sphinx packet from another Loopix module
                     if let Ok(sphinx) = serde_json::from_str::<Sphinx>(&module_msg.msg) {
-                        self.process_sphinx_packet(sphinx)
+                        self.process_sphinx_packet(sphinx);
+                        vec![]
                     } else {
                         log::error!("Failed to deserialize Sphinx packet");
                         vec![]
@@ -159,20 +148,20 @@ impl LoopixMessages {
         }
     }
 
-    fn process_sphinx_packet(&mut self, sphinx_packet: Sphinx) -> Vec<LoopixOut> {
+    fn process_sphinx_packet(&mut self, sphinx_packet: Sphinx) {
         let processed = sphinx_packet.inner.process(self.role.core().get_secret_key()).unwrap();
         match processed {
             ProcessedPacket::ForwardHop(next_packet, next_address, delay) => {
-                self.role.process_forward_hop(next_packet, next_address, delay)
+                let next_node_id = LoopixCore::node_id_from_node_address(next_address);
+                self.role.process_forward_hop(next_packet, next_node_id, delay);
             }
             ProcessedPacket::FinalHop(destination, surb_id, payload) => {
                 // Check if the final destination matches our ID
-                let dest = NodeID::from(destination.as_bytes()); 
+                let dest = LoopixCore::node_id_from_destination_address(destination);
                 if dest == self.our_id { // TODO meybe this is not the best idea for provider?
-                    self.role.process_final_hop(dest, surb_id, payload)
+                    self.role.process_final_hop(dest, surb_id, payload);
                 } else {
                     log::warn!("Received a FinalHop packet not intended for this node");
-                    vec![]
                 }
             }
         }

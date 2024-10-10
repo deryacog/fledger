@@ -4,11 +4,12 @@ use super::mixnode::MixnodeInterface;
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use super::sphinx::Sphinx;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Provider {
-    pub core: LoopixCore,
+    pub core: Arc<LoopixCore>,
     client_messages: HashMap<NodeID, Vec<Sphinx>>, // TODO: Define Message type
 }
 
@@ -55,7 +56,7 @@ impl MixnodeInterface for Provider {
     fn new(max_queue_size: usize) -> Self {
         // TODO: Generate key pair
         Self {
-            core: LoopixCore::new(
+            core: Arc::new(LoopixCore::new(
                 LoopixStorage::default(),
                 LoopixConfig {
                     lambda_loop: 2.0,
@@ -66,7 +67,7 @@ impl MixnodeInterface for Provider {
                     lambda_loop_mix: 500.0,
                 },
                 max_queue_size,
-            ),
+            )),
             client_messages: HashMap::new(),
         }
     }

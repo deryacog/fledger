@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::super::ModuleMessage;
 
 use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
@@ -6,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use super::messages::LoopixMessage;
 
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Client {
-    pub core: LoopixCore,
+    pub core: Arc<LoopixCore>,
     provider: Option<NodeID>,
     // mixnodes: Vec<NodeID>, // maybe?
 }
@@ -30,7 +32,7 @@ pub trait ClientInterface {
 impl Client {
     pub fn new(max_queue_size: usize) -> Self {
         Self {
-            core: LoopixCore::new(
+            core: Arc::new(LoopixCore::new(
                 LoopixStorage::default(),
                 LoopixConfig {
                     lambda_loop: 2.0,
@@ -41,7 +43,7 @@ impl Client {
                     lambda_loop_mix: 0.0,
                 },
                 max_queue_size,
-            ),
+            )),
             provider: None,
         }
     }

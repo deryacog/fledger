@@ -1,4 +1,5 @@
 use flarch::nodeids::NodeID;
+use crate::network::messages::NetworkIn;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::route::{NodeAddressBytes, DestinationAddressBytes};
 use std::{sync::Arc, time::SystemTime};
@@ -91,12 +92,12 @@ pub struct LoopixCore {
     secret_key: StaticSecret,
 
     #[serde(skip, default = "default_queue")]
-    queue: Arc<ConcurrentQueue<ModuleMessage>>,
+    queue: ConcurrentQueue<NetworkIn>,
     max_queue_size: usize,
 }
 
-fn default_queue() -> Arc<ConcurrentQueue<ModuleMessage>> {
-    Arc::new(ConcurrentQueue::bounded(100))
+fn default_queue() -> ConcurrentQueue<NetworkIn> {
+    ConcurrentQueue::bounded(100) // TODO probably
 }
 
 impl Clone for LoopixCore {
@@ -107,7 +108,7 @@ impl Clone for LoopixCore {
             config: self.config.clone(),
             pub_key: self.pub_key,
             secret_key: self.secret_key.clone(),
-            queue: Arc::new(ConcurrentQueue::bounded(self.max_queue_size)),
+            queue: ConcurrentQueue::bounded(self.max_queue_size),
             max_queue_size: self.max_queue_size,
         }
     }
@@ -122,12 +123,12 @@ impl LoopixCore {
             config,
             pub_key,
             secret_key,
-            queue: Arc::new(ConcurrentQueue::bounded(max_queue_size)),
+            queue: ConcurrentQueue::bounded(max_queue_size),
             max_queue_size,
         }
     }
 
-    pub fn enqueue_packet(&self, packet: ModuleMessage) -> Result<(), &'static str> {
+    pub fn enqueue_packet(&self, packet: NetworkIn) -> Result<(), &'static str> {
         self.queue.push(packet).map_err(|_| "Queue is full")
     }
 
@@ -135,7 +136,7 @@ impl LoopixCore {
         self.queue.is_empty()
     }
 
-    pub fn dequeue_packet(&self) -> Option<ModuleMessage> {
+    pub fn dequeue_packet(&self) -> Option<NetworkIn> {
         self.queue.pop().ok()
     }
 
@@ -354,7 +355,7 @@ mod tests {
             config: core1.config.clone(),
             pub_key: core1.pub_key,
             secret_key: core1.secret_key.clone(),
-            queue: Arc::new(ConcurrentQueue::bounded(100)),
+            queue: ConcurrentQueue::bounded(100),
             max_queue_size: 100,
         };
         
@@ -458,10 +459,12 @@ mod tests {
         assert!(core.is_queue_empty());
         
         // TODO maybe add a default/clone function to module message
-        let packet = ModuleMessage {
+        let msg = ModuleMessage {
             module: "test_module".to_string(),
             msg: "test_message".to_string(),
         };
+
+        let packet = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), msg);
         core.enqueue_packet(packet).unwrap();
         
         assert!(!core.is_queue_empty());
@@ -475,14 +478,14 @@ mod tests {
         let config = LoopixConfig::default();
         let core = LoopixCore::new(storage.clone(), config.clone(), 2);
 
-        let packet1 = ModuleMessage {
+        let packet1 = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), ModuleMessage {
             module: "test_module_1".to_string(),
             msg: "test_message_1".to_string(),
-        };
-        let packet2 = ModuleMessage {
+        });
+        let packet2 = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), ModuleMessage {
             module: "test_module_2".to_string(),
             msg: "test_message_2".to_string(),
-        };
+        });
         
         assert!(core.enqueue_packet(packet1).is_ok());
         assert!(core.enqueue_packet(packet2).is_ok());
@@ -495,14 +498,14 @@ mod tests {
         let config = LoopixConfig::default();
         let core = LoopixCore::new(storage.clone(), config.clone(), 2);
 
-        let packet1 = ModuleMessage {
+        let packet1 = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), ModuleMessage {
             module: "test_module_1".to_string(),
             msg: "test_message_1".to_string(),
-        };
-        let packet2 = ModuleMessage {
+        });
+        let packet2 = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), ModuleMessage {
             module: "test_module_2".to_string(),
             msg: "test_message_2".to_string(),
-        };
+        });
         
         core.enqueue_packet(packet1).unwrap();
         core.enqueue_packet(packet2).unwrap();
@@ -518,14 +521,14 @@ mod tests {
         let config = LoopixConfig::default();
         let core = LoopixCore::new(storage.clone(), config.clone(), 1);
 
-        let packet1 = ModuleMessage {
+        let packet1 = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), ModuleMessage {
             module: "test_module_1".to_string(),
             msg: "test_message_1".to_string(),
-        };
-        let packet2 = ModuleMessage {
+        });
+        let packet2 = NetworkIn::SendNodeModuleMessage(NodeID::rnd(), ModuleMessage {
             module: "test_module_2".to_string(),
             msg: "test_message_2".to_string(),
-        };
+        });
         
         assert!(core.enqueue_packet(packet1).is_ok());
         assert!(core.enqueue_packet(packet2).is_err());

@@ -1,12 +1,24 @@
+use std::sync::Arc;
+
 use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
 use super::messages::LoopixMessage;
+use sphinx_packet::{
+    header::delays::Delay,
+    packet::*,
+    payload::*,
+    route::*,
+};
+
+use super::super::ModuleMessage;
+
+use crate::network::messages::NetworkIn;
 
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Mixnode {
-    pub core: LoopixCore,
+    pub core: Arc<LoopixCore>,
 }
 
 pub trait MixnodeInterface {
@@ -20,6 +32,9 @@ pub trait MixnodeInterface {
         // Default implementation
     }
 
+    fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) {
+    }
+
     // TODO some kind of send queue
 }
 
@@ -27,7 +42,7 @@ impl MixnodeInterface for Mixnode {
     fn new(max_queue_size: usize) -> Self {
         // TODO: Generate key pair
         Self {
-            core: LoopixCore::new(
+            core: Arc::new(LoopixCore::new(
                 LoopixStorage::default(),
                 LoopixConfig {
                     lambda_loop: 2.0,
@@ -38,8 +53,33 @@ impl MixnodeInterface for Mixnode {
                     lambda_loop_mix: 500.0,
                 },
                 max_queue_size,
-            ),
+            )),
         }
+    }
+
+    fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) {
+        // Schedule the packet to be sent after the delay
+        // TODO need to check how they do the queue
+        let core:Arc<LoopixCore> = Arc::clone(&self.core);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(delay.to_duration()).await;
+            // Prepare packet for network module
+            let module_message = ModuleMessage {
+                module: "loopix".to_string(),
+                msg: serde_json::to_string(&Sphinx { inner: *next_packet }).unwrap(),
+            };
+            // Return the message to be sent to the network module
+            core.enqueue_packet(NetworkIn::SendNodeModuleMessage(next_address, module_message)).unwrap();
+        });
+    }
+
+    fn create_loop_message(&self, node_id: NodeID) {
+        // Default implementation
+    }
+
+    fn create_drop_message(&self, node_id: NodeID) {
+        // Default implementation
     }
 
 }
