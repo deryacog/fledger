@@ -17,6 +17,7 @@ use super::mixnode;
 use super::{
     client::Client, core::*, mixnode::{Mixnode, MixnodeInterface}, provider::{Provider, ProviderInterface}, sphinx::*
 };
+pub const MODULE_NAME: &str = "Loopix";
 
 #[derive(Debug, Clone)]
 pub enum NodeType {
@@ -97,6 +98,7 @@ pub enum LoopixMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LoopixIn {
     // The Loopix module will know what to do with the message based on the 'module' field of ModuleMessage
+    NodeModuleMessage(NodeID, ModuleMessage),
     ModuleMessage(ModuleMessage),
 }
 
@@ -132,7 +134,7 @@ impl LoopixMessages {
     fn process_message(&mut self, msg: LoopixIn) -> Vec<LoopixOut> {
         match msg {
             LoopixIn::ModuleMessage(module_msg) => {
-                if module_msg.module == "loopix" {
+                if module_msg.module == MODULE_NAME {
                     // This is a Sphinx packet from another Loopix module
                     if let Ok(sphinx) = serde_json::from_str::<Sphinx>(&module_msg.msg) {
                         self.process_sphinx_packet(sphinx);
@@ -143,6 +145,17 @@ impl LoopixMessages {
                     }
                 } else {
                     self.process_other_module_message(module_msg)
+                }
+            }
+            LoopixIn::NodeModuleMessage(node_id, module_msg) => {
+                if module_msg.module == MODULE_NAME {
+                    // TODO figure this borrowing
+                    // let sphinx = self.role.core().create_sphinx_packet(msg);
+
+                    // vec![LoopixOut::NodeModuleMessage(node_id, ModuleMessage{module: MODULE_NAME.into(), msg: serde_json::to_string(&sphinx).unwrap()})]
+                    vec![]
+                } else {
+                    vec![]
                 }
             }
         }

@@ -2,12 +2,13 @@ use flarch::nodeids::NodeID;
 use crate::network::messages::NetworkIn;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::route::{NodeAddressBytes, DestinationAddressBytes};
-use std::{sync::Arc, time::SystemTime};
+use std::{time::SystemTime, collections::HashMap};
 use x25519_dalek::{PublicKey, StaticSecret};
 use concurrent_queue::ConcurrentQueue;
 
 use super::super::ModuleMessage;
 
+use super::messages::{MODULE_NAME, LoopixIn};
 use super::{sphinx::Sphinx};
 
 // //////////////////////// Config ///////////////////////////////////////////////////////
@@ -59,6 +60,8 @@ pub struct LoopixStorage { // TODO THIS SHOULD BE THREADSAFE
     pub last_payload: SystemTime,
     pub last_pull: SystemTime,
     pub last_real: SystemTime,
+    #[serde(skip)]
+    pub node_public_keys: HashMap<NodeID, PublicKey>,
 }
 
 impl LoopixStorage {
@@ -75,6 +78,7 @@ impl Default for LoopixStorage {
             last_payload: SystemTime::now(),
             last_pull: SystemTime::now(),
             last_real: SystemTime::now(),
+            node_public_keys: HashMap::new(),
         }
     }
 }
@@ -126,6 +130,21 @@ impl LoopixCore {
             queue: ConcurrentQueue::bounded(max_queue_size),
             max_queue_size,
         }
+    }
+
+    pub fn create_sphinx_packet(&self, msg: LoopixIn) -> Option<Sphinx> { // TODO I'm not sure if this should be here
+        match msg {
+            LoopixIn::NodeModuleMessage(node_id, module_msg) => {
+                // TODO public keys
+                // TODO generate route
+                // TODO generate delays
+                // let sphinx_packet = SphinxPacket::new(message.clone(), &route, &destination, &delays).unwrap();
+               !todo!()
+            },
+            _ => {
+                None
+            }
+        }          
     }
 
     pub fn enqueue_packet(&self, packet: NetworkIn) -> Result<(), &'static str> {
@@ -301,6 +320,7 @@ mod tests {
             last_payload: custom_time,
             last_pull: custom_time,
             last_real: custom_time,
+            node_public_keys: HashMap::new(),
         };
         assert_eq!(storage.last_loop_cover, custom_time);
         assert_eq!(storage.last_drop, custom_time);
@@ -533,6 +553,4 @@ mod tests {
         assert!(core.enqueue_packet(packet1).is_ok());
         assert!(core.enqueue_packet(packet2).is_err());
     }
-
-
 }
