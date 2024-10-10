@@ -53,7 +53,7 @@ impl LoopixStorageSave {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct LoopixStorage {
+pub struct LoopixStorage { // TODO THIS SHOULD BE THREADSAFE
     pub last_loop_cover: SystemTime,
     pub last_drop: SystemTime,
     pub last_payload: SystemTime,
