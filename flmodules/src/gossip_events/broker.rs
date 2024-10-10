@@ -10,9 +10,11 @@ use super::{
     messages::{Config, GossipEvents, GossipIn, GossipMessage, GossipOut, MessageNode},
 };
 use crate::{
-    random_connections::messages::{ModuleMessage, RandomIn, RandomMessage, RandomOut},
+    random_connections::messages::{RandomIn, RandomMessage, RandomOut},
     timer::TimerMessage,
 };
+
+use super::super::ModuleMessage;
 
 const MODULE_NAME: &str = "Gossip";
 

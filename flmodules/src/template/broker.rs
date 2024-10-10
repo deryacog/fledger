@@ -2,11 +2,12 @@ use flarch::{data_storage::DataStorage, platform_async_trait, tasks::spawn_local
 use std::error::Error;
 use tokio::sync::watch;
 
-use crate::random_connections::messages::{ModuleMessage, RandomIn, RandomMessage, RandomOut};
+use crate::random_connections::messages::{RandomIn, RandomMessage, RandomOut};
 use flarch::{
     broker::{Broker, BrokerError, Subsystem, SubsystemHandler},
     nodeids::NodeID,
 };
+use super::super::ModuleMessage;
 
 use super::{
     core::{TemplateConfig, TemplateStorage, TemplateStorageSave},

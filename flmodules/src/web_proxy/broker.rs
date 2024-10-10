@@ -8,7 +8,9 @@ use flarch::{
 use thiserror::Error;
 use tokio::sync::{mpsc::channel, watch};
 
-use crate::random_connections::messages::{ModuleMessage, RandomIn, RandomMessage, RandomOut};
+use super::super::ModuleMessage;
+
+use crate::random_connections::messages::{RandomIn, RandomMessage, RandomOut};
 use flarch::{
     broker::{Broker, BrokerError, Subsystem, SubsystemHandler},
     nodeids::{NodeID, U256},
@@ -16,11 +18,9 @@ use flarch::{
 
 use super::{
     core::{Counters, WebProxyConfig, WebProxyStorage, WebProxyStorageSave},
-    messages::{MessageNode, WebProxyIn, WebProxyMessage, WebProxyMessages, WebProxyOut},
+    messages::{MessageNode, WebProxyIn, WebProxyMessage, WebProxyMessages, WebProxyOut, MODULE_NAME},
     response::Response,
 };
-
-const MODULE_NAME: &str = "WebProxy";
 
 #[derive(Debug, Error)]
 pub enum WebProxyError {
