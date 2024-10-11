@@ -194,19 +194,12 @@ impl LoopixCore {
         }
     }
 
-    pub fn create_sphinx_packet(&self, msg: LoopixIn) -> Option<Sphinx> { // TODO I'm not sure if this should be here
-        match msg {
-            LoopixIn::NodeModuleMessage(node_id, module_msg) => {
+    pub fn create_sphinx_packet(&self, dest: NodeID, msg: ModuleMessage) -> Sphinx { // TODO I'm not sure if this should be here
                 // TODO public keys
                 // TODO generate route
                 // TODO generate delays
                 // let sphinx_packet = SphinxPacket::new(message.clone(), &route, &destination, &delays).unwrap();
                !todo!()
-            },
-            _ => {
-                None
-            }
-        }          
     }
 
     pub fn enqueue_packet(&self, packet: NetworkIn) -> Result<(), &'static str> {

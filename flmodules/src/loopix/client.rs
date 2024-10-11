@@ -70,10 +70,6 @@ impl Client {
         // TODO: Implement payload message creation
     }
 
-    pub fn create_sphinx_packet(&self, module_msg: ModuleMessage){
-        
-        !todo!()
-    }
 }
 
 impl NodeBehavior for Client {

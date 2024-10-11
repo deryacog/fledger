@@ -64,20 +64,28 @@ impl NodeType {
         }
     }
 
-    pub fn process_other_module_message(&mut self, module_msg: ModuleMessage) -> Vec<LoopixOut> {
+    // Takes a msg from another module, wraps it in a sphinx packet and forwards it to the network module
+    pub fn process_other_module_message(&mut self, node_id: Option<NodeID>, module_msg: ModuleMessage) -> Vec<LoopixOut> {
         match self {
             NodeType::Mixnode(_) | NodeType::Provider(_) => vec![],
             NodeType::Client(client) => {
-                // Create a new Sphinx packet
-                let packet = client.create_sphinx_packet(module_msg);
-                let recipient = NodeID::rnd(); // TODO placehold
-                
-                // Send the packet to the network module
-                let loopix_message = ModuleMessage {
-                    module: "loopix".to_string(),
-                    msg: serde_json::to_string(&packet).unwrap(),
+                let dst = node_id.unwrap_or_else(|| NodeID::rnd());
+
+                let sphinx = client.core.create_sphinx_packet(dst, module_msg);
+
+                let loopix_msg = ModuleMessage {
+                    module: MODULE_NAME.into(),
+                    msg: serde_json::to_string(&sphinx).unwrap(),
                 };
-                vec![LoopixOut::NodeModuleMessage(recipient, loopix_message)]
+
+                let network_msg = ModuleMessage {
+                    module: "Network".to_string(), // TODO change this to a variable
+                    msg: serde_json::to_string(&loopix_msg).unwrap(),
+                };
+
+                let next_node = NodeID::rnd(); // TODO get this from sphinx header? 
+
+                vec![LoopixOut::NodeModuleMessage(next_node, network_msg)]
             }
         }
     }
@@ -131,33 +139,25 @@ impl LoopixMessages {
             .collect()
     }
 
-    fn process_message(&mut self, msg: LoopixIn) -> Vec<LoopixOut> {
+    fn process_message(&mut self, msg: LoopixIn) -> Vec<LoopixOut> { // TODO maybe get rid of this match case?
         match msg {
-            LoopixIn::ModuleMessage(module_msg) => {
-                if module_msg.module == MODULE_NAME {
-                    // This is a Sphinx packet from another Loopix module
-                    if let Ok(sphinx) = serde_json::from_str::<Sphinx>(&module_msg.msg) {
-                        self.process_sphinx_packet(sphinx);
-                        vec![]
-                    } else {
-                        log::error!("Failed to deserialize Sphinx packet");
-                        vec![]
-                    }
-                } else {
-                    self.process_other_module_message(module_msg)
-                }
-            }
-            LoopixIn::NodeModuleMessage(node_id, module_msg) => {
-                if module_msg.module == MODULE_NAME {
-                    // TODO figure this borrowing
-                    // let sphinx = self.role.core().create_sphinx_packet(msg);
+            LoopixIn::ModuleMessage(module_msg) => self.process_module_message(None, module_msg),
+            LoopixIn::NodeModuleMessage(node_id, module_msg) => self.process_module_message(Some(node_id), module_msg),
+        }
+    }
 
-                    // vec![LoopixOut::NodeModuleMessage(node_id, ModuleMessage{module: MODULE_NAME.into(), msg: serde_json::to_string(&sphinx).unwrap()})]
-                    vec![]
-                } else {
-                    vec![]
-                }
+    fn process_module_message(&mut self, node_id: Option<NodeID>, module_msg: ModuleMessage) -> Vec<LoopixOut> {
+        if module_msg.module == MODULE_NAME {
+            // This is a Loopix message which should be unwrapped
+            if let Ok(sphinx) = serde_json::from_str::<Sphinx>(&module_msg.msg) {
+                self.process_sphinx_packet(sphinx);
+                vec![]
+            } else {
+                log::error!("Failed to deserialize Sphinx packet");
+                vec![]
             }
+        } else {
+            self.role.process_other_module_message(node_id, module_msg)
         }
     }
 
@@ -178,10 +178,6 @@ impl LoopixMessages {
                 }
             }
         }
-    }
-
-    fn process_other_module_message(&mut self, module_msg: ModuleMessage) -> Vec<LoopixOut> {
-        self.role.process_other_module_message(module_msg)
     }
 }
 
