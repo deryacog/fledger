@@ -44,14 +44,14 @@ impl MixnodeInterface for Mixnode {
         Self {
             core: Arc::new(LoopixCore::new(
                 LoopixStorage::default(),
-                LoopixConfig {
-                    lambda_loop: 2.0,
-                    lambda_drop: 0.0,
-                    lambda_payload: 0.0,
-                    path_length: 0,
-                    mean_delay: 0.001,
-                    lambda_loop_mix: 500.0,
-                },
+                LoopixConfig::new(
+                    2.0,
+                    0.0,
+                    0.0,
+                    0,
+                    0.001,
+                    500.0,
+                ),
                 max_queue_size,
             )),
         }

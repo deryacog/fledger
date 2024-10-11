@@ -2,6 +2,7 @@ use flarch::nodeids::NodeID;
 use crate::network::messages::NetworkIn;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::route::{NodeAddressBytes, DestinationAddressBytes};
+use std::sync::RwLock;
 use std::{time::SystemTime, collections::HashMap};
 use x25519_dalek::{PublicKey, StaticSecret};
 use concurrent_queue::ConcurrentQueue;
@@ -14,12 +15,12 @@ use super::{sphinx::Sphinx};
 // //////////////////////// Config ///////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LoopixConfig {
-    pub lambda_loop: f64,       // Loop traffic rate (user)
-    pub lambda_drop: f64,       // Drop cover traffic rate (user)
-    pub lambda_payload: f64,    // Payload traffic rate (user)
-    pub path_length: i32,       // Path length (number of mix nodes in the route)
-    pub mean_delay: f64,        // Mean delay at each mix node (in seconds)
-    pub lambda_loop_mix: f64,   // Loop traffic rate (mix)
+    lambda_loop: f64,       // Loop traffic rate (user)
+    lambda_drop: f64,       // Drop cover traffic rate (user)
+    lambda_payload: f64,    // Payload traffic rate (user)
+    path_length: i32,       // Path length (number of mix nodes in the route)
+    mean_delay: f64,        // Mean delay at each mix node (in seconds)
+    lambda_loop_mix: f64,   // Loop traffic rate (mix)
 }
 
 impl Default for LoopixConfig {
@@ -31,6 +32,44 @@ impl Default for LoopixConfig {
             path_length: 3,
             mean_delay: 0.001,
             lambda_loop_mix: 10.0,
+        }
+    }
+}
+
+impl LoopixConfig {
+    pub fn lambda_loop(&self) -> f64 {
+        self.lambda_loop
+    }
+    
+    pub fn lambda_drop(&self) -> f64 {
+        self.lambda_drop
+    }
+    
+    pub fn lambda_payload(&self) -> f64 {
+        self.lambda_payload
+    }
+
+    pub fn path_length(&self) -> i32 {
+        self.path_length
+    }
+
+    pub fn mean_delay(&self) -> f64 {
+        self.mean_delay
+    }
+
+    pub fn lambda_loop_mix(&self) -> f64 {
+        self.lambda_loop_mix
+    }
+
+    pub fn new(lambda_loop: f64, lambda_drop: f64, lambda_payload: f64, 
+               path_length: i32, mean_delay: f64, lambda_loop_mix: f64) -> Self {
+        LoopixConfig {
+            lambda_loop,
+            lambda_drop,
+            lambda_payload,
+            path_length,
+            mean_delay,
+            lambda_loop_mix,
         }
     }
 }
@@ -53,15 +92,39 @@ impl LoopixStorageSave {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct LoopixStorage { // TODO THIS SHOULD BE THREADSAFE
-    pub last_loop_cover: SystemTime,
-    pub last_drop: SystemTime,
-    pub last_payload: SystemTime,
-    pub last_pull: SystemTime,
-    pub last_real: SystemTime,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoopixStorage {
+    pub last_loop_cover: RwLock<SystemTime>,
+    pub last_drop: RwLock<SystemTime>,
+    pub last_payload: RwLock<SystemTime>,
+    pub last_pull: RwLock<SystemTime>,
+    pub last_real: RwLock<SystemTime>,
     #[serde(skip)]
-    pub node_public_keys: HashMap<NodeID, PublicKey>,
+    pub node_public_keys: RwLock<HashMap<NodeID, PublicKey>>,
+}
+
+impl Clone for LoopixStorage {
+    fn clone(&self) -> Self {
+        LoopixStorage {
+            last_loop_cover: RwLock::new(*self.last_loop_cover.read().unwrap()),
+            last_drop: RwLock::new(*self.last_drop.read().unwrap()),
+            last_payload: RwLock::new(*self.last_payload.read().unwrap()),
+            last_pull: RwLock::new(*self.last_pull.read().unwrap()),
+            last_real: RwLock::new(*self.last_real.read().unwrap()),
+            node_public_keys: RwLock::new(self.node_public_keys.read().unwrap().clone()),
+        }
+    }
+}
+
+impl PartialEq for LoopixStorage {
+    fn eq(&self, other: &Self) -> bool {
+        *self.last_loop_cover.read().unwrap() == *other.last_loop_cover.read().unwrap() &&
+        *self.last_drop.read().unwrap() == *other.last_drop.read().unwrap() &&
+        *self.last_payload.read().unwrap() == *other.last_payload.read().unwrap() &&
+        *self.last_pull.read().unwrap() == *other.last_pull.read().unwrap() &&
+        *self.last_real.read().unwrap() == *other.last_real.read().unwrap() &&
+        *self.node_public_keys.read().unwrap() == *other.node_public_keys.read().unwrap()
+    }
 }
 
 impl LoopixStorage {
@@ -73,16 +136,15 @@ impl LoopixStorage {
 impl Default for LoopixStorage {
     fn default() -> Self {
         LoopixStorage {
-            last_loop_cover: SystemTime::now(),
-            last_drop: SystemTime::now(),
-            last_payload: SystemTime::now(),
-            last_pull: SystemTime::now(),
-            last_real: SystemTime::now(),
-            node_public_keys: HashMap::new(),
+            last_loop_cover: RwLock::new(SystemTime::now()),
+            last_drop: RwLock::new(SystemTime::now()),
+            last_payload: RwLock::new(SystemTime::now()),
+            last_pull: RwLock::new(SystemTime::now()),
+            last_real: RwLock::new(SystemTime::now()),
+            node_public_keys: RwLock::new(HashMap::new()),
         }
     }
 }
-
 // //////////////////////// Core ////////////////////////////////////////////////////////
 #[derive(Serialize, Deserialize)]
 pub struct LoopixCore {
@@ -270,6 +332,8 @@ pub trait NodeBehavior {
 mod tests {
     use super::*;
     use std::time::Duration;
+    use std::thread;
+    use std::sync::Arc;
 
     #[test]
     fn test_loopix_config_default() {
@@ -304,29 +368,31 @@ mod tests {
     fn test_loopix_storage_default() {
         let storage = LoopixStorage::default();
         let now = SystemTime::now();
-        assert!(storage.last_loop_cover <= now);
-        assert!(storage.last_drop <= now);
-        assert!(storage.last_payload <= now);
-        assert!(storage.last_pull <= now);
-        assert!(storage.last_real <= now);
+    
+        assert!(*storage.last_loop_cover.read().unwrap() <= now);
+        assert!(*storage.last_drop.read().unwrap() <= now);
+        assert!(*storage.last_payload.read().unwrap() <= now);
+        assert!(*storage.last_pull.read().unwrap() <= now);
+        assert!(*storage.last_real.read().unwrap() <= now);
     }
 
     #[test]
     fn test_loopix_storage_custom() {
         let custom_time = SystemTime::now() - Duration::from_secs(3600);
         let storage = LoopixStorage {
-            last_loop_cover: custom_time,
-            last_drop: custom_time,
-            last_payload: custom_time,
-            last_pull: custom_time,
-            last_real: custom_time,
-            node_public_keys: HashMap::new(),
+            last_loop_cover: RwLock::new(custom_time),
+            last_drop: RwLock::new(custom_time),
+            last_payload: RwLock::new(custom_time),
+            last_pull: RwLock::new(custom_time),
+            last_real: RwLock::new(custom_time),
+            node_public_keys: RwLock::new(HashMap::new()),
         };
-        assert_eq!(storage.last_loop_cover, custom_time);
-        assert_eq!(storage.last_drop, custom_time);
-        assert_eq!(storage.last_payload, custom_time);
-        assert_eq!(storage.last_pull, custom_time);
-        assert_eq!(storage.last_real, custom_time);
+    
+        assert_eq!(*storage.last_loop_cover.read().unwrap(), custom_time);
+        assert_eq!(*storage.last_drop.read().unwrap(), custom_time);
+        assert_eq!(*storage.last_payload.read().unwrap(), custom_time);
+        assert_eq!(*storage.last_pull.read().unwrap(), custom_time);
+        assert_eq!(*storage.last_real.read().unwrap(), custom_time);
     }
 
     #[test]
@@ -552,5 +618,51 @@ mod tests {
         
         assert!(core.enqueue_packet(packet1).is_ok());
         assert!(core.enqueue_packet(packet2).is_err());
+    }
+
+    #[test]
+    fn test_concurrent_last_loop_cover_update() {
+        let storage = Arc::new(LoopixStorage::default());
+        let thread_count = 5;
+        let mut handles = vec![];
+        let init_time = SystemTime::now();
+
+        for _ in 0..thread_count {
+            let storage_clone = Arc::clone(&storage);
+            let handle = thread::spawn(move || {
+                let new_time = SystemTime::now();
+                *storage_clone.last_loop_cover.write().unwrap() = new_time;
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert!(*storage.last_loop_cover.read().unwrap() > init_time);
+    }
+
+    #[test]
+    fn test_concurrent_node_public_keys_update() {
+        let storage = Arc::new(LoopixStorage::default());
+        let thread_count = 5;
+        let mut handles = vec![];
+
+        for i in 0..thread_count {
+            let storage_clone = Arc::clone(&storage);
+            let handle = thread::spawn(move || {
+                let node_id = NodeID::rnd();
+                let (pub_key, _) = LoopixCore::generate_key_pair();
+                storage_clone.node_public_keys.write().unwrap().insert(node_id, pub_key);
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert_eq!(storage.node_public_keys.read().unwrap().len(), thread_count);
     }
 }

@@ -58,14 +58,14 @@ impl MixnodeInterface for Provider {
         Self {
             core: Arc::new(LoopixCore::new(
                 LoopixStorage::default(),
-                LoopixConfig {
-                    lambda_loop: 2.0,
-                    lambda_drop: 500.0,
-                    lambda_payload: 2.0,
-                    path_length: 3,
-                    mean_delay: 0.001,
-                    lambda_loop_mix: 500.0,
-                },
+                LoopixConfig::new(
+                    2.0,
+                    500.0,
+                    2.0,
+                    3,
+                    0.001,
+                    500.0,
+                ),
                 max_queue_size,
             )),
             client_messages: HashMap::new(),
