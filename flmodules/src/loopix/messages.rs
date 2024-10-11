@@ -64,7 +64,7 @@ impl NodeType {
         }
     }
 
-    // Takes a msg from another module, wraps it in a sphinx packet and forwards it to the network module
+    /// Takes a msg from another module, wraps it in a sphinx packet and forwards it to the network module
     pub fn process_other_module_message(&mut self, node_id: Option<NodeID>, module_msg: ModuleMessage) -> Vec<LoopixOut> {
         match self {
             NodeType::Mixnode(_) | NodeType::Provider(_) => vec![],
