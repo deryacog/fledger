@@ -39,13 +39,14 @@ impl MixnodeInterface for Mixnode {
             ),
         }
     }
-
 }
 
 impl NodeBehavior for Mixnode {
-    fn process_loopix_message(&self, message: Message) {
-        // basically routing
-        // TODO: Implement
+    fn send_loop_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
+    fn send_drop_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
+    fn send_payload_traffic(&self, _node_id: NodeID) { /* TODO: Implement */ }
+
+    fn get_node_type(&self) -> &'static str {
+        "Mixnode"
     }
-    // method to sendd the messages
 }
