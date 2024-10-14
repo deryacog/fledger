@@ -1,17 +1,22 @@
-use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
+use std::sync::Arc;
+
+use super::super::ModuleMessage;
+
+use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
-use crate::loopix::messages::Message;
+use super::messages::LoopixMessage;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Client {
-    pub core: LoopixCore,
+    pub core: Arc<LoopixCore>,
     provider: Option<NodeID>,
     // mixnodes: Vec<NodeID>, // maybe?
 }
 
 pub trait ClientInterface {
-    fn new() -> Self;
+    fn new(max_queue_size: usize) -> Self;
 
     fn register_provider(&mut self, provider: NodeID);
     fn get_provider(&self) -> Option<NodeID>;
@@ -25,19 +30,13 @@ pub trait ClientInterface {
 }
 
 impl Client {
-    pub fn new() -> Self {
+    pub fn new(max_queue_size: usize) -> Self {
         Self {
-            core: LoopixCore::new(
+            core: Arc::new(LoopixCore::new(
                 LoopixStorage::default(),
-                LoopixConfig {
-                    lambda_loop: 2.0,
-                    lambda_drop: 500.0,
-                    lambda_payload: 2.0,
-                    path_length: 3,
-                    mean_delay: 0.001,
-                    lambda_loop_mix: 0.0,
-                },
-            ),
+                LoopixConfig::new(2.0, 500.0, 2.0, 3, 0.001, 0.0),
+                max_queue_size,
+            )),
             provider: None,
         }
     }
@@ -70,10 +69,11 @@ impl Client {
         // periodically
         // TODO: Implement payload message creation
     }
+
 }
 
 impl NodeBehavior for Client {
-    fn process_loopix_message(&self, message: Message) {
+    fn process_packet(&self, sphinx_packet: Sphinx){
         // do nothing basically
         // TODO: Implement
     }

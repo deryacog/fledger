@@ -12,6 +12,12 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModuleMessage {
+    pub module: String,
+    pub msg: String,
+}
+
 pub mod nodeconfig;
 pub mod template;
 pub mod random_connections;

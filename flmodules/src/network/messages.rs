@@ -36,6 +36,8 @@ use crate::{
     nodeconfig::{NodeConfig, NodeInfo},
 };
 
+use super::super::ModuleMessage;
+
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +65,8 @@ pub enum NetworkIn {
     /// if no such connection exists yet.
     /// If the node is not connected to the signalling handler, nothing happens.
     SendNodeMessage(NodeID, String),
+    /// Does the same thing as SendNodeMessage, except the destination module is specified in the ModuleMessage.
+    SendNodeModuleMessage(NodeID, ModuleMessage),
     /// Sends some stats to the signalling server to monitor the overall health of
     /// the system.
     SendWSStats(Vec<NodeStat>),
@@ -85,6 +89,8 @@ pub enum NetworkIn {
 pub enum NetworkOut {
     /// A new message has been received from the given node.
     RcvNodeMessage(NodeID, String),
+    /// Does the same thing as RcvNodeMessage, except the destination module is specified in the ModuleMessage.
+    RcvNodeModuleMessage(NodeID, ModuleMessage),
     /// An updated list coming from the signalling server.
     RcvWSUpdateList(Vec<NodeInfo>),
     /// Whenever the state of a connection changes, this message is
@@ -151,6 +157,13 @@ impl Network {
     /// If the remote node is not available, no error is returned.
     pub fn send_msg(&mut self, dst: NodeID, msg: String) -> Result<(), BrokerError> {
         self.send(NetworkIn::SendNodeMessage(dst, msg))
+    }
+
+    /// Tries to send a module to a remote node.
+    /// The [`NetworkBroker`] will start a connection with the node if there is none available.
+    /// If the remote node is not available, no error is returned.
+    pub fn send_module_msg(&mut self, dst: NodeID, module_msg: ModuleMessage) -> Result<(), BrokerError> {
+        self.send(NetworkIn::SendNodeModuleMessage(dst, module_msg))
     }
 
     /// Requests an updated list of all connected nodes to the signalling server.
@@ -305,6 +318,28 @@ impl NetworkBroker {
                     },
                     vec![NetworkMessage::from_nc(NCInput::Text(msg_str), id)],
                 ]))
+            },
+            NetworkIn::SendNodeModuleMessage(id, module_msg) => {
+                log::trace!(
+                    "msg_call_module_message: {}->{}: {:?} / {:?}",
+                    self.node_config.info.get_id(),
+                    id,
+                    module_msg,
+                    self.connections
+                );
+
+                let msg_string = serde_json::to_string(&module_msg).unwrap();
+            
+                Ok(concat(vec![
+                    if !self.connections.contains(&id) {
+                        self.connect(&id)
+                    } else {
+                        vec![]
+                    },
+                    
+                    vec![NetworkMessage::from_nc(NCInput::Text(msg_string), id)],
+                ]))
+
             }
             NetworkIn::SendWSStats(ss) => Ok(WSSignalMessageFromNode::NodeStats(ss.clone()).into()),
             NetworkIn::SendWSUpdateListRequest => Ok(WSSignalMessageFromNode::ListIDsRequest.into()),
@@ -326,7 +361,16 @@ impl NetworkBroker {
         match msg_nc {
             NCOutput::Connected(_) => vec![NetworkOut::Connected(id).into()],
             NCOutput::Disconnected(_) => vec![NetworkOut::Disconnected(id).into()],
-            NCOutput::Text(msg) => vec![NetworkOut::RcvNodeMessage(id, msg).into()],
+            NCOutput::Text(msg) => {
+                match serde_json::from_str::<ModuleMessage>(&msg) {
+                    Ok(module_msg) => {
+                        vec![NetworkOut::RcvNodeModuleMessage(id, module_msg).into()]
+                    }
+                    Err(_) => {
+                        vec![NetworkOut::RcvNodeMessage(id, msg).into()]
+                    }
+                }
+            },
             NCOutput::State(dir, state) => {
                 vec![NetworkOut::ConnectionState(NetworkConnectionState {
                     id,
@@ -458,6 +502,7 @@ impl fmt::Display for NetworkIn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NetworkIn::SendNodeMessage(_, _) => write!(f, "SendNodeMessage()"),
+            NetworkIn::SendNodeModuleMessage(_, _) => write!(f, "SendNodeModuleMessage()"),
             NetworkIn::SendWSStats(_) => write!(f, "SendWSStats()"),
             NetworkIn::SendWSUpdateListRequest => write!(f, "SendWSUpdateListRequest"),
             NetworkIn::Connect(_) => write!(f, "Connect()"),
@@ -485,6 +530,7 @@ impl fmt::Display for NetworkOut {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NetworkOut::RcvNodeMessage(_, _) => write!(f, "RcvNodeMessage()"),
+            NetworkOut::RcvNodeModuleMessage(_, _) => write!(f, "RcvNodeModuleMessage()"),
             NetworkOut::RcvWSUpdateList(_) => write!(f, "RcvWSUpdateList()"),
             NetworkOut::ConnectionState(_) => write!(f, "ConnectionState()"),
             NetworkOut::Connected(_) => write!(f, "Connected()"),
