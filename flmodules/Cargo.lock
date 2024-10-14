@@ -892,6 +892,7 @@ dependencies = [
  "log",
  "names",
  "rand",
+ "rand_distr",
  "reqwest",
  "serde",
  "serde_derive",

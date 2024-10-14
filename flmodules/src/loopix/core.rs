@@ -1,11 +1,14 @@
 use flarch::nodeids::NodeID;
+use rand::seq::SliceRandom;
 use crate::network::messages::NetworkIn;
 use serde::{Deserialize, Serialize};
-use sphinx_packet::route::{NodeAddressBytes, DestinationAddressBytes};
+use sphinx_packet::route::{DestinationAddressBytes, Node, NodeAddressBytes};
 use std::sync::RwLock;
 use std::{time::SystemTime, collections::HashMap};
 use x25519_dalek::{PublicKey, StaticSecret};
 use concurrent_queue::ConcurrentQueue;
+use rand::Rng;
+use rand_distr::{Distribution, Exp};
 
 use super::super::ModuleMessage;
 
@@ -195,11 +198,17 @@ impl LoopixCore {
     }
 
     pub fn create_sphinx_packet(&self, dest: NodeID, msg: ModuleMessage) -> Sphinx { // TODO I'm not sure if this should be here
-                // TODO public keys
-                // TODO generate route
-                // TODO generate delays
-                // let sphinx_packet = SphinxPacket::new(message.clone(), &route, &destination, &delays).unwrap();
-               !todo!()
+        // TODO public keys
+        let mut delays = Vec::new();
+        for _ in 0..self.config.path_length {
+            let delay = LoopixCore::sample_from_exponential(self.config.mean_delay);
+            delays.push(delay);
+            // TODO generate route
+
+        }
+        // TODO generate delays
+        // let sphinx_packet = SphinxPacket::new(message.clone(), &route, &destination, &delays).unwrap();
+        !todo!()
     }
 
     pub fn enqueue_packet(&self, packet: NetworkIn) -> Result<(), &'static str> {
@@ -259,6 +268,23 @@ impl LoopixCore {
         let private_key = StaticSecret::random_from_rng(rng);
         let public_key = PublicKey::from(&private_key);
         (public_key, private_key)
+    }
+
+    pub fn sample_from_exponential(lambda_param: f64) -> f64 {
+        let exp = Exp::new(1.0 / lambda_param).unwrap();
+        let mut rng = rand::thread_rng();
+        exp.sample(&mut rng)
+    }
+
+    pub fn create_route(&self, mixes: &Vec<Vec<NodeID>>) -> Vec<Node> {
+        let mut route = Vec::new();
+        for i in 0..self.config.path_length {
+            let mixnode = mixes[i as usize].choose(&mut rand::thread_rng()).unwrap();
+            let key = self.storage.node_public_keys.read().unwrap()[mixnode];
+            let node = Node::new(NodeAddressBytes::from_bytes(mixnode.to_bytes()), key);
+            route.push(node);
+        }
+        route
     }
 }
 
