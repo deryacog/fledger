@@ -33,7 +33,7 @@ use crate::{
     network::signal::{
         MessageAnnounce, NodeStat, WSSignalMessageFromNode, WSSignalMessageToNode, SIGNAL_VERSION,
     },
-    nodeconfig::{NodeConfig, NodeInfo},
+    nodeconfig::{NodeConfig, NodeInfo}, overlay::messages::NetworkWrapper,
 };
 
 
@@ -63,6 +63,8 @@ pub enum NetworkIn {
     /// if no such connection exists yet.
     /// If the node is not connected to the signalling handler, nothing happens.
     SendNodeMessage(NodeID, String),
+    /// Sends a new loopix message to the node.
+    SendLoopixMessage(NodeID, String),
     /// Sends some stats to the signalling server to monitor the overall health of
     /// the system.
     SendWSStats(Vec<NodeStat>),
@@ -85,6 +87,8 @@ pub enum NetworkIn {
 pub enum NetworkOut {
     /// A new message has been received from the given node.
     RcvNodeMessage(NodeID, String),
+    // A new loopix message has been received from the given node
+    RcvLoopixMessage(NodeID, String),
     /// An updated list coming from the signalling server.
     RcvWSUpdateList(Vec<NodeInfo>),
     /// Whenever the state of a connection changes, this message is
@@ -306,6 +310,24 @@ impl NetworkBroker {
                     vec![NetworkMessage::from_nc(NCInput::Text(msg_str), id)],
                 ]))
             }
+            NetworkIn::SendLoopixMessage(id, msg) => {
+                log::trace!(
+                    "msg_call: {}->{}: {:?} / {:?}",
+                    self.node_config.info.get_id(),
+                    id,
+                    msg,
+                    self.connections
+                );
+
+                Ok(concat(vec![
+                    if !self.connections.contains(&id) {
+                        self.connect(&id)
+                    } else {
+                        vec![]
+                    },
+                    vec![NetworkMessage::from_nc(NCInput::Text(msg), id)],
+                ]))
+            }
             NetworkIn::SendWSStats(ss) => Ok(WSSignalMessageFromNode::NodeStats(ss.clone()).into()),
             NetworkIn::SendWSUpdateListRequest => Ok(WSSignalMessageFromNode::ListIDsRequest.into()),
             NetworkIn::Connect(id) => Ok(self.connect(&id)),
@@ -458,6 +480,7 @@ impl fmt::Display for NetworkIn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NetworkIn::SendNodeMessage(_, _) => write!(f, "SendNodeMessage()"),
+            NetworkIn::SendLoopixMessage(_, _) => write!(f, "SendLoopixMessage()"),
             NetworkIn::SendWSStats(_) => write!(f, "SendWSStats()"),
             NetworkIn::SendWSUpdateListRequest => write!(f, "SendWSUpdateListRequest"),
             NetworkIn::Connect(_) => write!(f, "Connect()"),
@@ -485,6 +508,7 @@ impl fmt::Display for NetworkOut {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NetworkOut::RcvNodeMessage(_, _) => write!(f, "RcvNodeMessage()"),
+            NetworkOut::RcvLoopixMessage(_, _) => write!(f, "RcvLoopixMessage()"),
             NetworkOut::RcvWSUpdateList(_) => write!(f, "RcvWSUpdateList()"),
             NetworkOut::ConnectionState(_) => write!(f, "ConnectionState()"),
             NetworkOut::Connected(_) => write!(f, "Connected()"),
