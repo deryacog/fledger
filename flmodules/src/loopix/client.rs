@@ -29,14 +29,11 @@ pub trait ClientInterface {
     // TODO some kind of send queue
 }
 
+// LoopixConfig::new(2.0, 500.0, 2.0, 3, 0.001, 0.0),
 impl Client {
-    pub fn new(max_queue_size: usize) -> Self {
+    pub fn new(core: Arc<LoopixCore>) -> Self {
         Self {
-            core: Arc::new(LoopixCore::new(
-                LoopixStorage::default(),
-                LoopixConfig::new(2.0, 500.0, 2.0, 3, 0.001, 0.0),
-                max_queue_size,
-            )),
+            core,
             provider: None,
         }
     }

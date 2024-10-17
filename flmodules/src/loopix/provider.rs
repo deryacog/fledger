@@ -45,21 +45,18 @@ pub trait ProviderInterface: MixnodeInterface {
     fn send_pull_reply(&self, client_id: NodeID, message: Sphinx);
 }
 
+// LoopixConfig::new(
+//     2.0,
+//     500.0,
+//     2.0,
+//     3,
+//     0.001,
+//     500.0,
+// ),
 impl MixnodeInterface for Provider {
-    fn new(max_queue_size: usize) -> Self {
+    fn new(core: Arc<LoopixCore>) -> Self {
         Self {
-            core: Arc::new(LoopixCore::new(
-                LoopixStorage::default(),
-                LoopixConfig::new(
-                    2.0,
-                    500.0,
-                    2.0,
-                    3,
-                    0.001,
-                    500.0,
-                ),
-                max_queue_size,
-            )),
+            core,
             client_messages: Arc::new(RwLock::new(HashMap::new())),
             clients: RwLock::new(HashSet::new()),
         }

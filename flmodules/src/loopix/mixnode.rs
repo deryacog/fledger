@@ -38,23 +38,17 @@ pub trait MixnodeInterface {
     // TODO some kind of send queue
 }
 
+// LoopixConfig::new(
+//     2.0,
+//     0.0,
+//     0.0,
+//     0,
+//     0.001,
+//     500.0,
+// ),
 impl MixnodeInterface for Mixnode {
-    fn new(max_queue_size: usize) -> Self {
-        // TODO: Generate key pair
-        Self {
-            core: Arc::new(LoopixCore::new(
-                LoopixStorage::default(),
-                LoopixConfig::new(
-                    2.0,
-                    0.0,
-                    0.0,
-                    0,
-                    0.001,
-                    500.0,
-                ),
-                max_queue_size,
-            )),
-        }
+    fn new(core: Arc<LoopixCore>) -> Self {
+        Self { core }
     }
 
     fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) {
