@@ -9,6 +9,10 @@ use crate::{
     network::messages::{NetworkIn, NetworkMessage, NetworkOut},
     nodeconfig::NodeInfo,
     random_connections::messages::{RandomIn, RandomMessage, RandomOut},
+    loopix::messages::{LoopixIn, LoopixOut, LoopixMessage},
+    ping::messages::PingMessage,
+    web_proxy::messages::WebProxyMessage,
+    overlay::messages::{NetworkWrapper},
 };
 
 pub struct OverlayRandom {}
@@ -184,6 +188,44 @@ impl SubsystemHandler<OverlayMessage> for OverlayDirect {
         } else {
             vec![]
         }
+    }
+}
+
+pub struct OverlayLoopix {
+    pub broker: Broker<OverlayMessage>,
+}
+
+impl OverlayLoopix {
+    pub async fn start(
+        loopix: Broker<LoopixMessage>,
+    ) -> Result<Broker<OverlayMessage>, BrokerError> {
+        let mut broker = Broker::new();
+
+        broker.link_bi(
+            loopix.clone(),
+            Box::new(Self::from_loopix),
+            Box::new(Self::to_loopix),
+        ).await?;
+
+        Ok(broker)
+    }
+
+    fn from_loopix(msg: LoopixMessage) -> Option<OverlayMessage> {
+        if let LoopixMessage::Output(LoopixOut::OverlayReply(node_id, module_msg)) = msg {
+            return Some(OverlayOut::NetworkMapperFromNetwork(node_id, module_msg).into());
+        }
+        None
+    }
+
+    fn to_loopix(msg: OverlayMessage) -> Option<LoopixMessage> {
+        if let OverlayMessage::Input(input) = msg {
+            match input {
+                OverlayIn::NetworkWrapperToNetwork(node_id, wrapper) => {
+                    return Some(LoopixIn::OverlayRequest(node_id, wrapper).into());
+                }
+            }
+        }
+        None
     }
 }
 
