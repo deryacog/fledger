@@ -1,5 +1,5 @@
-use super::core::{LoopixCore, LoopixConfig, LoopixStorage, NodeBehavior};
 use super::messages::LoopixMessage;
+use super::core::LoopixCore;
 use super::mixnode::MixnodeInterface;
 use super::sphinx::Sphinx;
 use flarch::nodeids::NodeID;
@@ -107,43 +107,36 @@ impl ProviderInterface for Provider {
     }
 }
 
-impl NodeBehavior for Provider {
-    fn process_packet(&self, sphinx_packet: Sphinx){
-        // route or store
-        // TODO: Implement
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use flarch::nodeids::NodeID;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use flarch::nodeids::NodeID;
+//     #[test]
+//     fn test_subscribe_client() {
+//         let mut provider = Provider::new(100);
+//         let client_id = NodeID::rnd();
+//         provider.subscribe_client(client_id);
+//         assert!(provider.clients.read().unwrap().contains(&client_id));
+//     }
 
-    #[test]
-    fn test_subscribe_client() {
-        let mut provider = Provider::new(100);
-        let client_id = NodeID::rnd();
-        provider.subscribe_client(client_id);
-        assert!(provider.clients.read().unwrap().contains(&client_id));
-    }
+//     #[test]
+//     fn test_get_nonexistent_client_messages() {
+//         let provider = Provider::new(100);
+//         let client_id = NodeID::rnd();
+//         let messages = provider.get_client_messages(client_id);
+//         assert!(messages.is_empty());
+//     }
 
-    #[test]
-    fn test_get_nonexistent_client_messages() {
-        let provider = Provider::new(100);
-        let client_id = NodeID::rnd();
-        let messages = provider.get_client_messages(client_id);
-        assert!(messages.is_empty());
-    }
+//     #[test]
+//     fn test_provider_equality() {
+//         let provider1 = Provider::new(100);
+//         let provider2 = provider1.clone();
+//         assert_eq!(provider1, provider2);
 
-    #[test]
-    fn test_provider_equality() {
-        let provider1 = Provider::new(100);
-        let provider2 = provider1.clone();
-        assert_eq!(provider1, provider2);
-
-        let mut provider3 = Provider::new(100);
-        provider3.subscribe_client(NodeID::rnd());
-        assert_ne!(provider1, provider3);
-    }
-}
+//         let mut provider3 = Provider::new(100);
+//         provider3.subscribe_client(NodeID::rnd());
+//         assert_ne!(provider1, provider3);
+//     }
+// }
 

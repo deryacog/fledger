@@ -12,7 +12,7 @@ use sphinx_packet::{
 use tokio::time::sleep;
 
 use crate::network::messages::*;
-use super::mixnode;
+use crate::overlay::messages::NetworkWrapper;
 use super::{
     client::Client, core::*, mixnode::{Mixnode, MixnodeInterface}, provider::{Provider, ProviderInterface}, sphinx::*
 };
@@ -66,17 +66,18 @@ impl LoopixMessages {
 
     fn process_message(&mut self, msg: LoopixIn) -> Vec<LoopixOut> {
         match msg {
-            LoopixIn::OverlayRequest(node_id, message) => self.role.process_other_module_message(node_id, message),
+            LoopixIn::OverlayRequest(node_id, message) => self.role.process_overlay_message(node_id, message),
             LoopixIn::SphinxMessage(sphinx) => self.process_sphinx_packet(sphinx),
         }
     }
 
-    fn process_sphinx_packet(&mut self, sphinx_packet: Sphinx) {
+    fn process_sphinx_packet(&mut self, sphinx_packet: Sphinx) -> Vec<LoopixOut> {
         let processed = sphinx_packet.inner.process(self.role.core().get_secret_key()).unwrap();
         match processed {
             ProcessedPacket::ForwardHop(next_packet, next_address, delay) => {
                 let next_node_id = LoopixCore::node_id_from_node_address(next_address);
                 self.role.process_forward_hop(next_packet, next_node_id, delay);
+                vec![]
             }
             ProcessedPacket::FinalHop(destination, surb_id, payload) => {
                 // Check if the final destination matches our ID
@@ -86,6 +87,7 @@ impl LoopixMessages {
                 } else {
                     log::warn!("Received a FinalHop packet not intended for this node");
                 }
+                vec![]
             }
         }
     }
@@ -100,11 +102,11 @@ pub enum NodeType {
 }
 
 impl NodeType {
-    pub fn core(&self) -> &Arc<LoopixCore> {
+    pub fn core(&self) -> Arc<LoopixCore> {
         match self {
-            NodeType::Client(client) => &client.core,
-            NodeType::Mixnode(mixnode) => &mixnode.core,
-            NodeType::Provider(provider) => &provider.core,
+            NodeType::Client(client) => Arc::clone(&client.core),
+            NodeType::Mixnode(mixnode) => Arc::clone(&mixnode.core),
+            NodeType::Provider(provider) => Arc::clone(&provider.core),
         }
     }
 

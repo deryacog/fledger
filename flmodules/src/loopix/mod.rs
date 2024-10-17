@@ -7,3 +7,4 @@ pub mod mixnode;
 pub mod messages;
 
 pub mod sphinx;
+pub mod broker;

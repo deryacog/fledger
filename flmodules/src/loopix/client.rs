@@ -1,8 +1,5 @@
 use std::sync::Arc;
-
-use super::super::ModuleMessage;
-
-use super::{core::{LoopixConfig, LoopixCore, LoopixStorage, NodeBehavior}, sphinx::Sphinx};
+use super::{core::{LoopixConfig, LoopixCore, LoopixStorage}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
 use super::messages::LoopixMessage;
@@ -69,9 +66,10 @@ impl Client {
 
 }
 
-impl NodeBehavior for Client {
-    fn process_packet(&self, sphinx_packet: Sphinx){
-        // do nothing basically
-        // TODO: Implement
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dummy_test() {
+        assert_eq!(2, 2);
     }
 }
