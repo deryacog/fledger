@@ -1,18 +1,21 @@
 use std::collections::HashMap;
+use std::hash::Hash;
 use rand::Rng;
 use rand_distr::{Distribution, Exp};
 use flarch::nodeids::NodeID;
 use futures::lock::Mutex;
 use rand::seq::SliceRandom;
+use sphinx_packet::SphinxPacket;
 use crate::overlay::messages::NetworkWrapper;
 use serde::{Deserialize, Serialize};
-use sphinx_packet::route::{DestinationAddressBytes, Node, NodeAddressBytes};
+use sphinx_packet::route::{DestinationAddressBytes, Destination, Node, NodeAddressBytes};
+use sphinx_packet::header::delays::generate_from_average_duration;
 use x25519_dalek::{PublicKey, StaticSecret};
 use super::{messages::LoopixOut, sphinx::Sphinx};
-use tokio::sync::mpsc::{Sender};
+use tokio::sync::mpsc::Sender;
 use std::time::Duration;
-use tokio::sync::RwLock;
 use std::sync::Arc;
+
 
 // //////////////////////// Config ///////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -97,31 +100,27 @@ impl LoopixStorageSave {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoopixStorage {
     #[serde(skip)]
-    pub node_public_keys: Arc<Mutex<HashMap<NodeID, PublicKey>>>
+    pub node_public_keys: HashMap<NodeID, PublicKey>
 }
 
 impl Clone for LoopixStorage {
     fn clone(&self) -> Self {
         LoopixStorage {
-            node_public_keys: Arc::new(Mutex::new(
-                futures::executor::block_on(self.node_public_keys.lock()).clone(),
-            )),
+            node_public_keys: self.node_public_keys.clone()
         }
     }
 }
 
 impl PartialEq for LoopixStorage {
     fn eq(&self, other: &Self) -> bool {
-        let self_keys = futures::executor::block_on(self.node_public_keys.lock()).clone();
-        let other_keys = futures::executor::block_on(other.node_public_keys.lock()).clone();
-        self_keys == other_keys
+        self.node_public_keys == other.node_public_keys
     }
 }
 
 impl Default for LoopixStorage {
     fn default() -> Self {
         LoopixStorage {
-            node_public_keys: Arc::new(Mutex::new(HashMap::new())),
+            node_public_keys: HashMap::new(),
         }
     }
 }
@@ -142,6 +141,8 @@ pub struct LoopixCore {
     secret_key: StaticSecret,
 
     message_sender: Sender<(Duration, LoopixOut)>,
+
+    pub mixes: Vec<Vec<NodeID>>,
 }
 
 impl Clone for LoopixCore {
@@ -152,12 +153,13 @@ impl Clone for LoopixCore {
             pub_key: self.pub_key,
             secret_key: self.secret_key.clone(),
             message_sender: self.message_sender.clone(),
+            mixes: self.mixes.clone(), // Clone mixes
         }
     }
 }
 
 impl LoopixCore {
-    pub fn new(storage: LoopixStorage, config: LoopixConfig, message_sender: Sender<(Duration, LoopixOut)> ) -> Self {
+    pub fn new(storage: LoopixStorage, config: LoopixConfig, message_sender: Sender<(Duration, LoopixOut)>, mixes: Vec<Vec<NodeID>>) -> Self {
         let (pub_key, secret_key) = Self::generate_key_pair();
 
         Self {
@@ -166,21 +168,26 @@ impl LoopixCore {
             pub_key,
             secret_key,
             message_sender,
+            mixes,
         }
     }
 
-    pub fn create_sphinx_packet(&self, dest: NodeID, msg: NetworkWrapper) -> Sphinx { // TODO I'm not sure if this should be here
-        // TODO public keys
-        let mut delays = Vec::new();
-        for _ in 0..self.config.path_length {
-            let delay = LoopixCore::sample_from_exponential(self.config.mean_delay);
-            delays.push(delay);
-            // TODO generate route
+    pub fn create_sphinx_packet(&self, dest: NodeID, msg: NetworkWrapper, route: &[Node]) -> (Node, Sphinx) {
+        // delays
+        let path_length = self.config.path_length as usize; 
+        let mean_delay = Duration::from_secs_f64(self.config.mean_delay);
+        let delays = generate_from_average_duration(path_length, mean_delay);
+        
+        // destination
+        let destination_address = LoopixCore::destination_address_from_node_id(dest);
+        let random_identifier = rand::random::<[u8; 16]>();
+        let destination = Destination::new(destination_address, random_identifier);
 
-        }
-        // TODO generate delays
-        // let sphinx_packet = SphinxPacket::new(message.clone(), &route, &destination, &delays).unwrap();
-        !todo!()
+        // message conversion
+        let msg_bytes = serde_yaml::to_vec(&msg).unwrap();
+
+        let sphinx_packet = SphinxPacket::new(msg_bytes, route, &destination, &delays).unwrap();
+        (route[0].clone(), Sphinx {inner: sphinx_packet})
     }
 
     // TODO maybe errors
@@ -195,7 +202,7 @@ impl LoopixCore {
         NodeID::from(node_address_bytes)
     }
 
-    // TODO maybe errors
+    // TODO maybe error
     pub fn node_id_from_destination_address(dest_addr: DestinationAddressBytes) -> NodeID {
         let dest_bytes = dest_addr.as_bytes();
         NodeID::from(dest_bytes)
@@ -230,22 +237,35 @@ impl LoopixCore {
         (public_key, private_key)
     }
 
-    pub fn sample_from_exponential(lambda_param: f64) -> f64 {
-        let exp = Exp::new(1.0 / lambda_param).unwrap();
-        let mut rng = rand::thread_rng();
-        exp.sample(&mut rng)
+    pub fn get_node_keys(&self) -> HashMap<NodeID, PublicKey> {
+        self.get_storage().node_public_keys.clone()
     }
 
-    pub async fn create_route(&self, mixes: &Vec<Vec<NodeID>>) -> Vec<Node> {
+    pub fn create_route(&self, provider: Option<NodeID>, dest_provider: Option<NodeID>) -> Vec<Node> {
         let mut route = Vec::new();
-        
-        let node_public_keys = self.storage.node_public_keys.lock().await;
 
+        let node_public_keys = self.get_node_keys();
+        
+        // add client provider
+        if let Some(provider) = provider {
+            let dest_key = node_public_keys.get(&provider).unwrap();
+            let dest_node = Node::new(NodeAddressBytes::from_bytes(provider.to_bytes()), *dest_key);
+            route.push(dest_node);
+        }
+
+        // add mixnode route
         for i in 0..self.config.path_length {
-            let mixnode = mixes[i as usize].choose(&mut rand::thread_rng()).unwrap();
-            let key = node_public_keys.get(mixnode).unwrap(); // Access public key safely
+            let mixnode = self.mixes[i as usize].choose(&mut rand::thread_rng()).unwrap();
+            let key = node_public_keys.get(mixnode).unwrap();
             let node = Node::new(NodeAddressBytes::from_bytes(mixnode.to_bytes()), *key);
             route.push(node);
+        }
+
+        // add dst provider
+        if let Some(dest_provider) = dest_provider {
+            let dest_key = node_public_keys.get(&dest_provider).unwrap();
+            let dest_node = Node::new(NodeAddressBytes::from_bytes(dest_provider.to_bytes()), *dest_key);
+            route.push(dest_node);
         }
 
         route
@@ -487,6 +507,11 @@ where
 //     }
 
 // }
+
+
+
+
+
 
 
 

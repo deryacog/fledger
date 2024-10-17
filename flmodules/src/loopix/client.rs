@@ -1,7 +1,11 @@
 use std::sync::Arc;
+use std::collections::HashMap;
+use crate::overlay::messages::NetworkWrapper;
+
 use super::{core::{LoopixConfig, LoopixCore, LoopixStorage}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
 use serde::{Deserialize, Serialize};
+use sphinx_packet::route::Node;
 use super::messages::LoopixMessage;
 
 
@@ -9,7 +13,7 @@ use super::messages::LoopixMessage;
 pub struct Client {
     pub core: Arc<LoopixCore>,
     provider: Option<NodeID>,
-    // mixnodes: Vec<NodeID>, // maybe?
+    client_to_provider_map: HashMap<NodeID, NodeID>,
 }
 
 pub trait ClientInterface {
@@ -21,7 +25,8 @@ pub trait ClientInterface {
 
     fn create_loop_message(&self);
     fn create_drop_message(&self);
-    fn create_payload_message(&self, destination: NodeID);
+    fn create_payload_message(&self, destination: NodeID, msg: NetworkWrapper) -> (Node, Sphinx);
+
     
     // TODO some kind of send queue
 }
@@ -32,6 +37,7 @@ impl Client {
         Self {
             core,
             provider: None,
+            client_to_provider_map: HashMap::new(),
         }
     }
 
@@ -59,11 +65,22 @@ impl Client {
         // TODO: Implement drop message creation
     }
 
-    pub fn create_payload_message(&self, destination: NodeID) {
-        // periodically
-        // TODO: Implement payload message creation
+    pub fn create_payload_message(&self, destination: NodeID, msg: NetworkWrapper) -> (NodeID, Sphinx) {
+        let dst_provider = self.get_provider_for_client(&destination);
+        let route = self.core.create_route(self.get_provider(), dst_provider);
+
+        let (_, sphinx) = self.core.create_sphinx_packet(destination, msg, &route);
+
+        (self.get_provider().unwrap(), sphinx)
     }
 
+    pub fn update_client_provider_mapping(&mut self, client_id: NodeID, new_provider_id: NodeID) {
+        self.client_to_provider_map.insert(client_id, new_provider_id);
+    }
+
+    pub fn get_provider_for_client(&self, client_id: &NodeID) -> Option<NodeID> {
+        self.client_to_provider_map.get(client_id).cloned()
+    }
 }
 
 #[cfg(test)]

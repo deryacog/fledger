@@ -140,14 +140,11 @@ impl NodeType {
     }
 
     /// Takes a msg from another module, wraps it in a sphinx packet
-    pub fn process_overlay_message(&mut self, dst: NodeID, module_msg: NetworkWrapper) -> Vec<LoopixOut> {
+    pub fn process_overlay_message(&mut self, dst: NodeID, message: NetworkWrapper) -> Vec<LoopixOut> {
         match self {
             NodeType::Mixnode(_) | NodeType::Provider(_) => vec![],
             NodeType::Client(client) => {
-                let sphinx = client.core.create_sphinx_packet(dst, module_msg);
-
-                let next_node = NodeID::rnd(); // TODO get this from sphinx header? 
-
+                let (next_node, sphinx) = client.create_payload_message(dst, message);
                 vec![LoopixOut::SphinxToNetwork(next_node, sphinx)]
             }
         }
