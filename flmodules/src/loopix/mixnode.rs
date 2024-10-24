@@ -25,8 +25,21 @@ pub trait MixnodeInterface {
     fn new(core: Arc<LoopixCore>) -> Self;
     fn get_core(&self) -> &Arc<LoopixCore>;
 
-    fn create_loop_message(&self, node_id: NodeID) {
-        // Default implementation
+    /// Loop message to a random provider then back to the mixnode itself
+    fn create_loop_message(&self) -> (NodeID, Sphinx) {
+        // pick random provider
+        let random_provider = self.get_core().providers.choose(&mut rand::thread_rng()).unwrap();
+
+        // create route
+        let route = self.get_core().create_route(None, Some(*random_provider));
+        
+        // create the networkmessage
+        let loop_msg = serde_json::to_string(&MessageType::Loop).unwrap();
+        let msg = NetworkWrapper{ module: MODULE_NAME.into(), msg: loop_msg};
+
+        // create sphinx packet
+        let (next_node, sphinx) = self.get_core().create_sphinx_packet(self.get_core().get_our_id(), msg, &route);
+        (LoopixCore::node_id_from_node_address(next_node.address), sphinx)
     }
 
     fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay);
@@ -69,7 +82,7 @@ impl MixnodeInterface for Mixnode {
 
     fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) {
         let message =  LoopixOut::SphinxToNetwork(next_address, Sphinx { inner: *next_packet });
-        self.core.send_message(delay.to_duration(), message);
+        self.core.send_message(delay, message);
     }
 
 }

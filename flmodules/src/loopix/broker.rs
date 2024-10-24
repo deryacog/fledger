@@ -1,3 +1,4 @@
+use sphinx_packet::header::delays::{generate_from_average_duration, Delay};
 use tokio::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,7 +33,7 @@ impl LoopixBroker {
         overlay: Broker<OverlayMessage>,
         mut network: Broker<NetworkMessage>,
         our_id: NodeID,
-        mut receiver: Receiver<(Duration, LoopixOut)>,
+        mut receiver: Receiver<(Delay, LoopixOut)>,
         role: NodeType,
     ) -> Result<Broker<LoopixMessage>, BrokerError> {
         let mut broker = Broker::new();
@@ -54,12 +55,18 @@ impl LoopixBroker {
         broker.add_subsystem(Subsystem::Handler(Box::new(LoopixTranslate {
             overlay,
             network: network.clone(),
-            loopix_messages: LoopixMessages::new(our_id, role),
+            loopix_messages: LoopixMessages::new(role),
         }))).await?;
 
         let lambda_payload = Duration::from_secs_f64(core.get_config().lambda_payload());
-        Self::start_receiver_thread(core, receiver, network, lambda_payload);
+        Self::start_receiver_thread(core.clone(), receiver, network, lambda_payload);
 
+        let lambda_loop = Duration::from_secs_f64(core.get_config().lambda_loop());
+        Self::start_loop_message_thread(core.clone(), lambda_loop);
+
+        let lambda_drop = Duration::from_secs_f64(core.get_config().lambda_drop());
+        Self::start_drop_message_thread(core.clone(), lambda_drop);
+        
         Ok(broker)
     }
 
@@ -93,7 +100,31 @@ impl LoopixBroker {
         None
     }
 
-    pub fn start_receiver_thread(core: Arc<LoopixCore>, mut receiver: Receiver<(Duration, LoopixOut)>, mut network: Broker<NetworkMessage>, payload_rate: Duration) {
+    pub fn start_loop_message_thread(core: Arc<LoopixCore>, loop_rate: Duration) {
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(loop_rate).await;
+                let (node_id, sphinx) = (core.create_loop_message)(core.clone());
+                let delay = generate_from_average_duration(1, Duration::from_secs_f64(core.get_config().mean_delay()));
+
+                core.send_message(delay[0], LoopixOut::SphinxToNetwork(node_id, sphinx)).await;
+            }
+        });
+    }
+
+    pub fn start_drop_message_thread(core: Arc<LoopixCore>, drop_rate: Duration) {
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(drop_rate).await;
+                let (node_id, sphinx) = (core.create_drop_message)(core.clone());
+                let delay = generate_from_average_duration(1, Duration::from_secs_f64(core.get_config().mean_delay()));
+
+                core.send_message(delay[0], LoopixOut::SphinxToNetwork(node_id, sphinx)).await;
+            }
+        });
+    }
+
+    pub fn start_receiver_thread(core: Arc<LoopixCore>, mut receiver: Receiver<(Delay, LoopixOut)>, mut network: Broker<NetworkMessage>, payload_rate: Duration) {
         tokio::spawn(async move {
             let mut sphinx_messages: Vec<(Duration, LoopixOut)> = Vec::new();
 
@@ -108,7 +139,7 @@ impl LoopixBroker {
 
                 // Receive new messages
                 if let Some((delay, loopix_out)) = receiver.recv().await {
-                    sphinx_messages.push((delay, loopix_out));
+                    sphinx_messages.push((delay.to_duration(), loopix_out));
                 }
 
                 // Sort messages by remaining delay

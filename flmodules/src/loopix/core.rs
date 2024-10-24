@@ -9,7 +9,7 @@ use sphinx_packet::SphinxPacket;
 use crate::overlay::messages::NetworkWrapper;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::route::{DestinationAddressBytes, Destination, Node, NodeAddressBytes};
-use sphinx_packet::header::delays::generate_from_average_duration;
+use sphinx_packet::header::delays::{generate_from_average_duration, Delay};
 use x25519_dalek::{PublicKey, StaticSecret};
 use super::{messages::LoopixOut, sphinx::Sphinx};
 use tokio::sync::mpsc::Sender;
@@ -20,12 +20,12 @@ use std::sync::Arc;
 // //////////////////////// Config ///////////////////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LoopixConfig {
-    lambda_loop: f64,       // Loop traffic rate (user)
+    lambda_loop: f64,       // Loop traffic rate (user or mix)
     lambda_drop: f64,       // Drop cover traffic rate (user)
     lambda_payload: f64,    // Payload traffic rate (user)
     path_length: i32,       // Path length (number of mix nodes in the route)
     mean_delay: f64,        // Mean delay at each mix node (in seconds)
-    lambda_loop_mix: f64,   // Loop traffic rate (mix)
+    lambda_loop_mix: f64,   // Loop traffic rate (mix) TODO get rid of this
 }
 
 impl Default for LoopixConfig {
@@ -140,19 +140,22 @@ pub struct LoopixCore {
     
     secret_key: StaticSecret,
 
-    message_sender: Sender<(Duration, LoopixOut)>,
+    message_sender: Sender<(Delay, LoopixOut)>,
+
+    our_id: NodeID,
 
     pub mixes: Vec<Vec<NodeID>>,
 
     pub providers: Vec<NodeID>,
 
-    create_drop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
-    create_loop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
+    pub create_drop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
+    pub create_loop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
 }
 
 impl Clone for LoopixCore {
     fn clone(&self) -> Self { 
         Self {
+            our_id: self.our_id,
             storage: self.storage.clone(),
             config: self.config.clone(),
             pub_key: self.pub_key,
@@ -170,15 +173,17 @@ impl LoopixCore {
     pub fn new(
         storage: LoopixStorage,
         config: LoopixConfig,
-        message_sender: Sender<(Duration, LoopixOut)>,
+        message_sender: Sender<(Delay, LoopixOut)>,
         mixes: Vec<Vec<NodeID>>,
         providers: Vec<NodeID>,
         create_drop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
         create_loop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
+        our_id: NodeID,
     ) -> Self {
         let (pub_key, secret_key) = Self::generate_key_pair();
 
         Self {
+            our_id,
             storage,
             config,
             pub_key,
@@ -250,6 +255,10 @@ impl LoopixCore {
         &self.secret_key
     }
 
+    pub fn get_our_id(&self) -> NodeID {
+        self.our_id
+    }
+
     fn generate_key_pair() -> (PublicKey, StaticSecret) {
         let rng = rand::thread_rng();
         let private_key = StaticSecret::random_from_rng(rng);
@@ -261,6 +270,7 @@ impl LoopixCore {
         self.get_storage().node_public_keys.clone()
     }
 
+    // TODO provider might count as layer
     pub fn create_route(&self, provider: Option<NodeID>, dest_provider: Option<NodeID>) -> Vec<Node> {
         let mut route = Vec::new();
 
@@ -291,12 +301,12 @@ impl LoopixCore {
         route
     }
 
-    pub fn get_sender(&self) -> Sender<(Duration, LoopixOut)> {
+    pub fn get_sender(&self) -> Sender<(Delay, LoopixOut)> {
         self.message_sender.clone()
     }
 
-    pub fn send_message(&self, delay: Duration, message: LoopixOut) {
-        self.message_sender.send((delay, message)); // TODO async
+    pub async fn send_message(&self, delay: Delay, message: LoopixOut) {
+        self.message_sender.send((delay, message)).await.unwrap();
     }
 
     pub fn create_drop_message(&self) -> (NodeID, Sphinx) {
@@ -531,6 +541,7 @@ where
 //     }
 
 // }
+
 
 
 

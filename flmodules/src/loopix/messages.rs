@@ -63,17 +63,14 @@ pub enum LoopixOut {
 #[derive(Debug)]
 pub struct LoopixMessages {
     pub role: NodeType,
-    our_id: NodeID,
 }
 
 impl LoopixMessages {
     pub fn new(
-        our_id: NodeID,
         node_type: NodeType,
     ) -> Self {
         Self {
             role: node_type,
-            our_id,
         }
     }
 
@@ -101,7 +98,7 @@ impl LoopixMessages {
             ProcessedPacket::FinalHop(destination, surb_id, payload) => {
                 // Check if the final destination matches our ID
                 let dest = LoopixCore::node_id_from_destination_address(destination);
-                if dest == self.our_id {
+                if dest == self.role.core().get_our_id() {
                     self.role.process_final_hop(dest, surb_id, payload);
                 } else {
                     log::warn!("Received a FinalHop packet not intended for this node");

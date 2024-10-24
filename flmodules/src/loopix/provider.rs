@@ -69,7 +69,7 @@ impl MixnodeInterface for Provider {
         &self.core
     }
 
-    fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) {
+    fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) { // TODO fix this
         // store the message if the next_address if your client
         if self.clients.read().unwrap().contains(&next_address) {
             let client_messages = Arc::clone(&self.client_messages);

@@ -24,7 +24,7 @@ pub trait ClientInterface {
     fn get_provider(&self) -> Option<NodeID>;
     fn send_pull_request(&self);
 
-    fn create_loop_message(&self);
+    fn create_loop_message(&self) -> (NodeID, Sphinx);
     fn create_payload_message(&self, destination: NodeID, msg: NetworkWrapper) -> (Node, Sphinx);
 
     
@@ -54,9 +54,17 @@ impl Client {
         // TODO: Implement
     }
 
-    pub fn create_loop_message(&self) {
-        // periodically
-        // TODO: Implement loop message creation
+    pub fn create_loop_message(&self) -> (NodeID, Sphinx) {
+        // create route
+        let route = self.core.create_route(self.provider, None);
+        
+        // create the networkmessage
+        let loop_msg = serde_json::to_string(&MessageType::Loop).unwrap();
+        let msg = NetworkWrapper{ module: MODULE_NAME.into(), msg: loop_msg};
+
+        // create sphinx packet
+        let (_, sphinx) = self.core.create_sphinx_packet(self.provider.unwrap(), msg, &route);
+        (self.provider.unwrap(), sphinx)
     }
 
     pub fn create_drop_message(&self) -> (NodeID, Sphinx) {
