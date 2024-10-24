@@ -1,8 +1,11 @@
-use super::messages::LoopixMessage;
+use crate::overlay::messages::NetworkWrapper;
+
+use super::messages::{LoopixMessage, MessageType, MODULE_NAME};
 use super::core::LoopixCore;
 use super::mixnode::MixnodeInterface;
 use super::sphinx::Sphinx;
 use flarch::nodeids::NodeID;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::header::delays::Delay;
 use sphinx_packet::SphinxPacket;
@@ -62,6 +65,10 @@ impl MixnodeInterface for Provider {
         }
     }
 
+    fn get_core(&self) -> &Arc<LoopixCore> {
+        &self.core
+    }
+
     fn process_forward_hop(&self, next_packet: Box<SphinxPacket>, next_address: NodeID, delay: Delay) {
         // store the message if the next_address if your client
         if self.clients.read().unwrap().contains(&next_address) {
@@ -96,6 +103,7 @@ impl ProviderInterface for Provider {
         let messages = self.client_messages.read().expect("Failed to acquire read lock");
         messages.get(&client_id).cloned().unwrap_or_default()
     }
+
 
     fn create_dummy_message(&self) -> Sphinx {
         // Sphinx::default()

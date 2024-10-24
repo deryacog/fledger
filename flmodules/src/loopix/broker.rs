@@ -1,4 +1,5 @@
 use tokio::sync::mpsc::{self, Receiver};
+use std::sync::Arc;
 use std::time::Duration;
 use flarch::nodeids::NodeID;
 
@@ -57,7 +58,7 @@ impl LoopixBroker {
         }))).await?;
 
         let lambda_payload = Duration::from_secs_f64(core.get_config().lambda_payload());
-        Self::start_receiver_thread(receiver, network, lambda_payload);
+        Self::start_receiver_thread(core, receiver, network, lambda_payload);
 
         Ok(broker)
     }
@@ -72,7 +73,7 @@ impl LoopixBroker {
     fn from_network(msg: NetworkMessage) -> Option<LoopixMessage> {
         if let NetworkMessage::Output(NetworkOut::RcvLoopixMessage(node_id, message)) = msg {
             let sphinx_packet: Sphinx = serde_json::from_str(&message).unwrap();
-            return Some(LoopixIn::SphinxMessage(sphinx_packet).into());
+            return Some(LoopixIn::SphinxFromNetwork(sphinx_packet).into());
         }
         None
     }
@@ -92,7 +93,7 @@ impl LoopixBroker {
         None
     }
 
-    pub fn start_receiver_thread(mut receiver: Receiver<(Duration, LoopixOut)>, mut network: Broker<NetworkMessage>, payload_rate: Duration) {
+    pub fn start_receiver_thread(core: Arc<LoopixCore>, mut receiver: Receiver<(Duration, LoopixOut)>, mut network: Broker<NetworkMessage>, payload_rate: Duration) {
         tokio::spawn(async move {
             let mut sphinx_messages: Vec<(Duration, LoopixOut)> = Vec::new();
 
@@ -111,16 +112,21 @@ impl LoopixBroker {
                 }
 
                 // Sort messages by remaining delay
-                sphinx_messages.sort_by_key(|&(delay, _)| delay);
+                sphinx_messages.sort_by_key(|&(delay, _)| delay); // TODO technically this is not the protocol
 
                 // Emit messages with 0 or less delay
                 if let Some((delay, loopix_out)) = sphinx_messages.first() {
                     if *delay <= Duration::ZERO {
-                        if let LoopixOut::SphinxToNetwork(node_id, sphinx) = loopix_out {
+                        if let LoopixOut::SphinxToNetwork(node_id, sphinx) = loopix_out { // TODO what if else?
                             let msg = serde_json::to_string(&sphinx).unwrap();
                             network.emit_msg(NetworkIn::SendLoopixMessage(*node_id, msg).into()).unwrap();
                             sphinx_messages.remove(0);
                         }
+                    }
+                    else {
+                        let (node_id, sphinx) = core.create_drop_message();
+                        let msg = serde_json::to_string(&sphinx).unwrap();
+                        network.emit_msg(NetworkIn::SendLoopixMessage(node_id, msg).into()).unwrap();
                     }
                 }
             }

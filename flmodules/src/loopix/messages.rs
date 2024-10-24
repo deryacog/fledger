@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use flarch::nodeids::NodeID;
+use flarch::nodeids::{NodeID, NodeIDs};
 use serde::{Deserialize, Serialize};
 use sphinx_packet::{
     header::delays::Delay,
@@ -10,8 +10,9 @@ use sphinx_packet::{
     route::*,
 };
 use tokio::time::sleep;
+use serde_json;
 
-use crate::network::messages::*;
+use crate::{network::messages::*, nodeconfig::NodeInfo};
 use crate::overlay::messages::NetworkWrapper;
 use super::{
     client::Client, core::*, mixnode::{Mixnode, MixnodeInterface}, provider::{Provider, ProviderInterface}, sphinx::*
@@ -30,8 +31,20 @@ pub enum LoopixIn {
     // message from overlay: needs to be put in a sphinx packet
     OverlayRequest(NodeID, NetworkWrapper),
     // packet in sphinx format, from other nodes
-    SphinxMessage(Sphinx),
+    SphinxFromNetwork(Sphinx),
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageType {
+    Payload(NetworkWrapper),
+    Drop,
+    Loop,
+    Dummy,
+    PullRequest,
+    SubscriptionRequest, // TODO    
+    SubscriptionReply, // TODO
+}
+
 
 #[derive(Debug, Clone)]
 pub enum LoopixOut {
@@ -39,6 +52,12 @@ pub enum LoopixOut {
     SphinxToNetwork(NodeID, Sphinx),
     // Unencrypted module message to overlay
     OverlayReply(NodeID, NetworkWrapper),
+    //
+    NodeInfosConnected(Vec<NodeInfo>),
+
+    NodeIDsConnected(NodeIDs),
+
+    NodeInfoAvailable(Vec<NodeInfo>),
 }
 
 #[derive(Debug)]
@@ -67,7 +86,7 @@ impl LoopixMessages {
     fn process_message(&mut self, msg: LoopixIn) -> Vec<LoopixOut> {
         match msg {
             LoopixIn::OverlayRequest(node_id, message) => self.role.process_overlay_message(node_id, message),
-            LoopixIn::SphinxMessage(sphinx) => self.process_sphinx_packet(sphinx),
+            LoopixIn::SphinxFromNetwork(sphinx) => self.process_sphinx_packet(sphinx),
         }
     }
 

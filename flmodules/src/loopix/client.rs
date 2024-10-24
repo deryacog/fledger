@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use crate::overlay::messages::NetworkWrapper;
 
-use super::{core::{LoopixConfig, LoopixCore, LoopixStorage}, sphinx::Sphinx};
+use super::{core::{LoopixConfig, LoopixCore, LoopixStorage}, messages::{MessageType, MODULE_NAME}, sphinx::Sphinx};
 use flarch::nodeids::NodeID;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use sphinx_packet::route::Node;
 use super::messages::LoopixMessage;
@@ -24,11 +25,9 @@ pub trait ClientInterface {
     fn send_pull_request(&self);
 
     fn create_loop_message(&self);
-    fn create_drop_message(&self);
     fn create_payload_message(&self, destination: NodeID, msg: NetworkWrapper) -> (Node, Sphinx);
 
     
-    // TODO some kind of send queue
 }
 
 // LoopixConfig::new(2.0, 500.0, 2.0, 3, 0.001, 0.0),
@@ -60,17 +59,32 @@ impl Client {
         // TODO: Implement loop message creation
     }
 
-    pub fn create_drop_message(&self) {
-        // periodically
-        // TODO: Implement drop message creation
+    pub fn create_drop_message(&self) -> (NodeID, Sphinx) {
+        // pick random provider
+        let random_provider = self.core.providers.choose(&mut rand::thread_rng()).unwrap();
+
+        // create route
+        let route = self.core.create_route(self.provider, Some(*random_provider));
+
+        // create the networkmessage
+        let drop_msg = serde_json::to_string(&MessageType::Drop).unwrap();
+        let msg = NetworkWrapper{ module: MODULE_NAME.into(), msg: drop_msg};
+
+        // create sphinx packet
+        let (_, sphinx) = self.core.create_sphinx_packet(*random_provider, msg, &route);
+        (self.provider.unwrap(), sphinx)
     }
 
+
     pub fn create_payload_message(&self, destination: NodeID, msg: NetworkWrapper) -> (NodeID, Sphinx) {
+        // get provider for destination
         let dst_provider = self.get_provider_for_client(&destination);
+
+        // create route 
         let route = self.core.create_route(self.get_provider(), dst_provider);
 
+        // create sphinx packet
         let (_, sphinx) = self.core.create_sphinx_packet(destination, msg, &route);
-
         (self.get_provider().unwrap(), sphinx)
     }
 

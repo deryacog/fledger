@@ -143,6 +143,11 @@ pub struct LoopixCore {
     message_sender: Sender<(Duration, LoopixOut)>,
 
     pub mixes: Vec<Vec<NodeID>>,
+
+    pub providers: Vec<NodeID>,
+
+    create_drop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
+    create_loop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
 }
 
 impl Clone for LoopixCore {
@@ -153,13 +158,24 @@ impl Clone for LoopixCore {
             pub_key: self.pub_key,
             secret_key: self.secret_key.clone(),
             message_sender: self.message_sender.clone(),
-            mixes: self.mixes.clone(), // Clone mixes
+            mixes: self.mixes.clone(),
+            providers: self.providers.clone(),
+            create_drop_message: self.create_drop_message,
+            create_loop_message: self.create_loop_message,
         }
     }
 }
 
 impl LoopixCore {
-    pub fn new(storage: LoopixStorage, config: LoopixConfig, message_sender: Sender<(Duration, LoopixOut)>, mixes: Vec<Vec<NodeID>>) -> Self {
+    pub fn new(
+        storage: LoopixStorage,
+        config: LoopixConfig,
+        message_sender: Sender<(Duration, LoopixOut)>,
+        mixes: Vec<Vec<NodeID>>,
+        providers: Vec<NodeID>,
+        create_drop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
+        create_loop_message: fn(Arc<LoopixCore>) -> (NodeID, Sphinx),
+    ) -> Self {
         let (pub_key, secret_key) = Self::generate_key_pair();
 
         Self {
@@ -169,8 +185,12 @@ impl LoopixCore {
             secret_key,
             message_sender,
             mixes,
+            providers,
+            create_drop_message,
+            create_loop_message,
         }
     }
+
 
     pub fn create_sphinx_packet(&self, dest: NodeID, msg: NetworkWrapper, route: &[Node]) -> (Node, Sphinx) {
         // delays
@@ -276,7 +296,11 @@ impl LoopixCore {
     }
 
     pub fn send_message(&self, delay: Duration, message: LoopixOut) {
-        self.message_sender.send((delay, message));
+        self.message_sender.send((delay, message)); // TODO async
+    }
+
+    pub fn create_drop_message(&self) -> (NodeID, Sphinx) {
+        (self.create_drop_message)(Arc::new(self.clone()))
     }
 }
 
@@ -507,6 +531,8 @@ where
 //     }
 
 // }
+
+
 
 
 
