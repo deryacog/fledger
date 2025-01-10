@@ -8,7 +8,7 @@ use flarch::{
 use thiserror::Error;
 use tokio::sync::{mpsc::channel, watch};
 
-use crate::overlay::messages::{NetworkWrapper, OverlayIn, OverlayMessage, OverlayOut};
+use crate::{loopix::{PROXY_MESSAGE_BANDWIDTH, PROXY_MESSAGE_COUNT, RETRY_COUNT}, overlay::messages::{NetworkWrapper, OverlayIn, OverlayMessage, OverlayOut}};
 use flarch::{
     broker::{Broker, BrokerError, Subsystem, SubsystemHandler},
     nodeids::{NodeID, U256},
@@ -78,7 +78,7 @@ impl WebProxy {
     /// returned.
     /// TODO: add GET headers and body, move timeout to configuration
     pub async fn get(&mut self, url: &str) -> Result<Response, WebProxyError> {
-        // log::debug!("Getting {url}");
+        log::debug!("Getting {url}");
         let our_rnd = U256::rnd();
         let (tx, rx) = channel(128);
         self.web_proxy
@@ -100,18 +100,28 @@ impl WebProxy {
         .map_err(|_| WebProxyError::ResponseTimeout)?
     }
 
-    pub async fn get_with_timeout(
-        &mut self,
-        url: &str,
-        timeout_duration: Duration,
-    ) -> Result<Response, WebProxyError> {
-        // log::debug!("Getting {url}");
+    pub async fn get_with_retry_and_timeout(&mut self, url: &str, retry: u8, time: Duration) -> Result<Response, WebProxyError> {
+        for i in 0..(retry + 1) { // +1 because it should retry at least once
+            if i != 0 {
+                RETRY_COUNT.inc();
+            }
+            log::debug!("Getting {url} with retry {i}");
+            match self.get_with_timeout(url, time).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) => log::error!("Error getting {url}: {e}"),
+            }
+        }
+        Err(WebProxyError::ResponseTimeout)
+    }
+
+    pub async fn get_with_timeout(&mut self, url: &str, time: Duration) -> Result<Response, WebProxyError> {
+        log::debug!("Getting {url}");
         let our_rnd = U256::rnd();
         let (tx, rx) = channel(128);
         self.web_proxy
             .emit_msg(WebProxyIn::RequestGet(our_rnd, url.to_string(), tx).into())?;
         let (mut tap, id) = self.web_proxy.get_tap().await?;
-        timeout(timeout_duration, async move {
+        timeout(time, async move {
             while let Some(msg) = tap.recv().await {
                 if let WebProxyMessage::Output(WebProxyOut::ResponseGet(proxy, rnd, header)) = msg {
                     if rnd == our_rnd {
@@ -157,7 +167,6 @@ impl Translate {
 
     fn link_overlay_proxy(msg: OverlayMessage) -> Option<WebProxyMessage> {
         if let OverlayMessage::Output(msg_out) = msg {
-            log::info!("WebProxy: Received message from overlay: {:?}", msg_out);
             match msg_out {
                 OverlayOut::NodeInfosConnected(list) => {
                     Some(WebProxyIn::NodeInfoConnected(list).into())
@@ -173,12 +182,14 @@ impl Translate {
     }
 
     fn link_proxy_overlay(msg: WebProxyMessage) -> Option<OverlayMessage> {
-        log::info!("WebProxy: Sending message to overlay: {:?}", msg);
         if let WebProxyMessage::Output(WebProxyOut::ToNetwork(id, msg_node)) = msg {
+            let wrapper = NetworkWrapper::wrap_yaml(MODULE_NAME, &msg_node).unwrap();
+            PROXY_MESSAGE_BANDWIDTH.inc_by(wrapper.msg.len() as f64);
+            PROXY_MESSAGE_COUNT.inc();
             Some(
                 OverlayIn::NetworkWrapperToNetwork(
                     id,
-                    NetworkWrapper::wrap_yaml(MODULE_NAME, &msg_node).unwrap(),
+                    wrapper,
                 )
                 .into(),
             )
@@ -231,7 +242,6 @@ mod tests {
             WebProxy::start(cl_ds, cl_id, cl_rnd.clone(), WebProxyConfig::default()).await?;
         let (mut cl_tap, _) = cl_rnd.get_tap().await?;
         let _wp = WebProxy::start(wp_ds, wp_id, wp_rnd.clone(), WebProxyConfig::default()).await?;
-
         let (mut wp_tap, _) = wp_rnd.get_tap().await?;
 
         let list = vec![cl_in, wp_in];

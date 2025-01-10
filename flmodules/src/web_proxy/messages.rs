@@ -8,6 +8,7 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 
+use crate::loopix::PROXY_REQUEST_RECEIVED;
 use crate::nodeconfig::NodeInfo;
 use crate::Modules;
 
@@ -89,7 +90,16 @@ impl WebProxyMessages {
     /// MessageOut.
     pub fn process_node_message(&mut self, src: NodeID, msg: ModuleMessage) -> Vec<WebProxyOut> {
         let mut out = match msg {
-            ModuleMessage::Request(nonce, request) => self.start_request(src, nonce, request),
+            ModuleMessage::Request(nonce, request) => {
+                if self.core.has_responded(nonce) {
+                    log::debug!("Already responded to nonce {}", nonce);
+                    return vec![];
+                } else {
+                    let res = self.start_request(src, nonce, request);
+                    self.core.mark_as_responded(nonce);
+                    res
+                }
+            }
             ModuleMessage::Response(nonce, response) => self.handle_response(src, nonce, response),
         };
         out.push(WebProxyOut::UpdateStorage(self.core.storage.clone()));
@@ -106,7 +116,6 @@ impl WebProxyMessages {
                 .collect::<Vec<NodeID>>()
                 .into(),
         );
-        log::trace!("WebProxy: Node list updated: {:?}", nodes);
         vec![]
     }
 
@@ -117,6 +126,7 @@ impl WebProxyMessages {
     }
 
     fn start_request(&mut self, src: NodeID, nonce: U256, request: String) -> Vec<WebProxyOut> {
+        PROXY_REQUEST_RECEIVED.inc();
         let mut broker = self.broker.clone();
         spawn_local(async move {
             match reqwest::get(request).await {
@@ -165,6 +175,7 @@ impl WebProxyMessages {
                 )))
                 .expect("Sending done message for");
         });
+
         vec![]
     }
 

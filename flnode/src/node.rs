@@ -74,6 +74,9 @@ pub struct Node {
     pub webproxy: Option<WebProxy>,
     /// Create a mix-network for anonymous communication
     pub loopix: Option<LoopixBroker>,
+
+    /// Data save path
+    pub data_save_path: Option<String>,
 }
 
 const STORAGE_GOSSIP_EVENTS: &str = "gossip_events";
@@ -88,6 +91,7 @@ impl Node {
         storage: Box<dyn DataStorage + Send>,
         node_config: NodeConfig,
         broker_net: Broker<NetworkMessage>,
+        data_save_path: Option<String>,
     ) -> Result<Self, NodeError> {
         info!(
             "Starting node: {} = {}",
@@ -153,6 +157,7 @@ impl Node {
             ping,
             webproxy,
             loopix,
+            data_save_path,
         };
         node.add_timer(TimerBroker::start().await?).await;
         Ok(node)
@@ -304,13 +309,18 @@ impl Node {
 
     /// Fetches the config
     pub fn get_config(storage: Box<dyn DataStorage>) -> Result<NodeConfig, NodeError> {
+        log::info!("Getting config from {}", STORAGE_CONFIG);
         let config_str = match storage.get(STORAGE_CONFIG) {
-            Ok(s) => s,
+            Ok(s) => {
+                log::info!("Loaded configuration: {}", s);
+                s
+            },
             Err(_) => {
                 log::info!("Couldn't load configuration - start with empty");
                 "".to_string()
             }
         };
+        log::info!("Here is the config: {}", config_str);
         let mut config = NodeConfig::decode(&config_str)?;
         #[cfg(target_family = "wasm")]
         let enable_webproxy_request = false;
@@ -349,7 +359,7 @@ mod tests {
 
         let storage = DataStorageTemp::new();
         let nc = NodeConfig::new();
-        let mut nd = Node::start(storage.clone(), nc.clone(), Broker::new()).await?;
+        let mut nd = Node::start(storage.clone(), nc.clone(), Broker::new(), None).await?;
         let event = Event {
             category: Category::TextMessage,
             src: nc.info.get_id(),
@@ -364,7 +374,7 @@ mod tests {
             .await?;
         nd.process().await?;
 
-        let nd2 = Node::start(storage.clone(), nc.clone(), Broker::new()).await?;
+        let nd2 = Node::start(storage.clone(), nc.clone(), Broker::new(), None  ).await?;
         let events = nd2.gossip.unwrap().storage.events(Category::TextMessage);
         assert_eq!(1, events.len());
         assert_eq!(&event, events.get(0).unwrap());
@@ -379,6 +389,7 @@ mod tests {
             Box::new(DataStorageTemp::new()),
             NodeConfig::new(),
             Broker::new(),
+            None,
         )
         .await?;
         node.update();

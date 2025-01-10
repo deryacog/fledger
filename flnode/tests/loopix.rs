@@ -60,7 +60,7 @@ async fn proxy_nodes_n(path_length: usize) -> Result<(), Box<dyn Error>> {
         let config = setup
             .get_config(*id, flmodules::loopix::config::LoopixRole::Client)
             .await?;
-        let loopix_broker = LoopixBroker::start(v.node.broker_net.clone(), config).await?;
+        let loopix_broker = LoopixBroker::start(v.node.broker_net.clone(), config, 1).await?;
         let overlay = OverlayLoopix::start(loopix_broker.broker.clone()).await?;
         v.node.loopix = Some(loopix_broker);
         v.node.webproxy = Some(WebProxy::start(v.node.storage.clone(), *id, overlay, WebProxyConfig::default()).await?);

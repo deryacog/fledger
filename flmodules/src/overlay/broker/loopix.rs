@@ -121,7 +121,7 @@ mod test {
 
         let network = Broker::<NetworkMessage>::new();
         
-        let loopix_broker = match LoopixBroker::start(network.clone(), config).await {
+        let loopix_broker = match LoopixBroker::start(network.clone(), config, 1).await {
             Ok(broker) => broker,
             Err(e) => {
                 log::error!("Error starting LoopixBroker: {}", e);

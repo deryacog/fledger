@@ -1,8 +1,4 @@
-use flmodules::loopix::config::CoreConfig;
-use std::fs::File;
-use std::io::Write;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use tokio::time::Duration;
+use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 
 use clap::Parser;
 
@@ -16,9 +12,7 @@ use flarch::{
 use flmodules::{
     gossip_events::core::{Category, Event},
     loopix::{
-        broker::LoopixBroker,
-        config::{LoopixConfig, LoopixRole},
-        storage::LoopixStorage,
+        broker::LoopixBroker, config::{CoreConfig, LoopixConfig, LoopixRole}, storage::LoopixStorage, END_TO_END_LATENCY, LOOPIX_START_TIME, NUMBER_OF_PROXY_REQUESTS
     },
     network::{messages::NetworkMessage, network_broker_start, signal::SIGNAL_VERSION},
     nodeconfig::NodeInfo,
@@ -26,8 +20,8 @@ use flmodules::{
     web_proxy::{broker::WebProxy, core::WebProxyConfig},
 };
 use flnode::{node::Node, version::VERSION_STRING};
+use prometheus::{gather, Encoder, TextEncoder};
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 /// Fledger node CLI binary
@@ -54,57 +48,53 @@ struct Args {
     #[clap(flatten)]
     verbosity: clap_verbosity_flag::Verbosity,
 
-    /// Uptime interval - to stress test disconnections
     #[clap(short, long)]
     path_len: Option<usize>,
-}
 
-async fn save_loopix_storage_periodically(
-    storage: Arc<LoopixStorage>,
-    path: PathBuf,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    log::info!("Saving loopix storage to {}", path.display());
+    /// Number of clients
+    #[clap(short, long)]
+    n_clients: Option<usize>,
 
-    let mut storage_path = PathBuf::from(".");
-    storage_path.push(path);
+    /// Reliability config
+    #[clap(short = 'r', long="retry", default_value_t = 0)]
+    retry: u8,
 
-    if let Err(e) = std::fs::create_dir_all(&storage_path) {
-        eprintln!("Failed to create directory: {}", e);
-    }
+    /// Save metrics to a new file every 10 seconds if true, otherwise overwrite
+    #[clap(short = 'm', long="save_new_metrics_file", default_value_t = false)]
+    save_new_metrics_file: bool,
 
-    storage_path.push("loopix_storage.yaml");
+    /// Time to start loopix
+    #[clap(short = 't', long="start_loopix_time", default_value_t = 0)]
+    start_loopix_time: u64,
 
-    loop {
-        std::thread::sleep(Duration::from_secs(1));
+    /// Number of duplicates to send
+    #[clap(short = 'd', long="duplicates", default_value_t = 1)]
+    duplicates: u8,
 
-        let storage_bytes = storage.to_yaml_async().await.unwrap();
-
-        match File::create(&storage_path) {
-            Ok(mut file) => {
-                if let Err(e) = file.write_all(storage_bytes.as_bytes()) {
-                    println!("Failed to write storage file: {}", e);
-                }
-            }
-            Err(e) => {
-                println!("Failed to create storage file: {}", e);
-            }
-        }
-    }
+    /// Token to use for the request
+    #[clap(short = 'k', long="token", default_value = "")]
+    token: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+    
     let args = Args::parse();
+    let config = args.config.clone();
+    let retry = args.retry;
+    let duplicates = args.duplicates;
+    let n_clients = if let Some(n_clients) = args.n_clients {
+        n_clients
+    } else {
+        panic!("Number of clients must be provided");
+    };
 
     let mut logger = env_logger::Builder::new();
-    logger.filter_module("fl", log::LevelFilter::Info);
+    logger.filter_module("fl", args.verbosity.log_level_filter());
+    
     logger.parse_env("RUST_LOG");
     logger.try_init().expect("Failed to initialize logger");
-
-    let config = args.config.clone();
-
-    let mut config_path = PathBuf::new();
-    config_path.push(config);
 
     let storage = DataStorageFile::new(args.config, "fledger".into());
     let mut node_config = Node::get_config(storage.clone())?;
@@ -115,6 +105,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SIGNAL_VERSION,
         VERSION_STRING
     );
+    log::info!("start loopix time is {}", args.start_loopix_time);
+    log::info!("retry is {}", retry);
+    log::info!("duplicates is {}", duplicates);
 
     log::debug!("Connecting to websocket at {}", args.signal_url);
     let network = network_broker_start(
@@ -132,43 +125,112 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     )
     .await?;
-    let mut node = Node::start(Box::new(storage), node_config, network).await?;
+    let mut node = Node::start(Box::new(storage), node_config, network, Some(config.clone())).await?;
     let nc = node.node_config.info.clone();
-    let mut state = match args.path_len {
-        Some(len) => {
-            log::info!("Starting with path length {}", len);
-            LoopixSimul::Root(LSRoot::WaitNodes(len))
-        }
-        None => LoopixSimul::Child(LSChild::WaitConfig),
-    };
-    log::info!(
-        "Starting node with state {:?} {}: {}",
-        state,
-        nc.get_id(),
-        nc.name
-    );
+
+
+    let mut storage_path = PathBuf::from(".");
+    storage_path.push(config.clone());
+    storage_path.push("loopix_storage.yaml");
+
+    let mut state;
+    if storage_path.exists() {
+
+        state = LoopixSimul::Child(LSChild::WaitConfig);
+        log::info!(
+            "Starting node with previous state {:?} {}: {}",
+            state,
+            nc.get_id(),
+            nc.name
+        );
+
+    } else {
+        state = match args.path_len {
+            Some(len) => LoopixSimul::Root(LSRoot::WaitNodes(len, n_clients)),
+            None => LoopixSimul::Child(LSChild::WaitConfig),
+        };
+        log::info!(
+            "Starting new node with state {:?} {}: {}",
+            state,
+            nc.get_id(),
+            nc.name
+        );
+    }
 
     log::info!("Started successfully");
     let mut i: u32 = 0;
     loop {
         i += 1;
+        log::info!("We go to process!");
         node.process()
             .await
             .err()
             .map(|e| log::warn!("Couldn't process node: {e:?}"));
 
-        state = state.process(&mut node, i, config_path.clone()).await?;
+        state = state.process(args.token.clone(), &mut node, i, retry, duplicates, start_time, args.start_loopix_time, args.save_new_metrics_file).await?;
 
-        if i % 3 == 2 && false {
-            log::info!("Nodes are: {:?}", node.nodes_online()?);
-            let ping = &node.ping.as_ref().unwrap().storage;
-            log::info!("Nodes countdowns are: {:?}", ping.stats);
-            log::debug!(
-                "Chat messages are: {:?}",
-                node.gossip.as_ref().unwrap().chat_events()
-            );
-        }
         wait_ms(1000).await;
+    }
+}
+
+async fn save_metrics_loop(
+    storage: Arc<LoopixStorage>,
+    dir_path: String,
+    save_new_metrics_file: bool,
+    start_time: Instant,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    log::info!("Starting save metrics thread!");
+    let path = PathBuf::from(dir_path);
+
+    let mut storage_path = PathBuf::from(".");
+    storage_path.push(path.clone());
+    if let Err(e) = std::fs::create_dir_all(&storage_path) {
+        log::error!("Failed to create directory: {}", e);
+    }
+    storage_path.push("loopix_storage.yaml");
+
+    let mut metrics_base_path = PathBuf::from(".");
+    metrics_base_path.push(path);
+    if let Err(e) = std::fs::create_dir_all(&metrics_base_path) {
+        log::error!("Failed to create directory: {}", e);
+    }
+
+    let storage_bytes = storage.to_yaml_async().await.unwrap();
+    {
+        let mut file = File::create(&storage_path).expect("Unable to create file");
+        file.write_all(storage_bytes.as_bytes())
+            .expect("Unable to write data");
+    }
+    let sleep_time = if save_new_metrics_file {
+        60
+    } else {
+        5
+    };
+
+    let mut i: u32 = 0;
+    loop {
+        std::thread::sleep(Duration::from_secs(sleep_time));
+
+        let mut metrics_path = metrics_base_path.clone();
+        if save_new_metrics_file {
+            log::info!("Saving metrics to new file {} at {} seconds since start", i, start_time.elapsed().as_secs_f64());
+            metrics_path.push(format!("metrics_{}.txt", i));
+        } else {
+            log::info!("Saving metrics to existing file for the {}th time at {} seconds since start", i, start_time.elapsed().as_secs_f64());
+            metrics_path.push("metrics.txt");
+        }
+
+        let metric_families = gather();
+        let mut buffer = Vec::new();
+        let encoder = TextEncoder::new();
+        encoder.encode(&metric_families, &mut buffer).unwrap();
+
+        {
+            let mut file = File::create(&metrics_path).expect("Unable to create file");
+            file.write_all(&buffer).expect("Unable to write data");
+        }
+
+        i += 1;
     }
 }
 
@@ -182,15 +244,10 @@ enum LoopixSimul {
 }
 
 impl LoopixSimul {
-    async fn process(
-        &self,
-        node: &mut Node,
-        i: u32,
-        dir_path: PathBuf,
-    ) -> Result<Self, BrokerError> {
+    async fn process(&self, token: String, node: &mut Node, i: u32, retry: u8, duplicates: u8, start_time: Instant, loopix_start_time: u64, save_new_metrics_file: bool) -> Result<Self, BrokerError> {
         let new_state = match &self {
-            LoopixSimul::Root(lsroot) => lsroot.process(node, i, dir_path).await?,
-            LoopixSimul::Child(lschild) => lschild.process(node, dir_path).await?,
+            LoopixSimul::Root(lsroot) => lsroot.process(token, node, i, retry,  duplicates, start_time, loopix_start_time, save_new_metrics_file).await?,
+            LoopixSimul::Child(lschild) => lschild.process(token, node, i, retry, duplicates, start_time, loopix_start_time, save_new_metrics_file).await?,
         };
         if *self != new_state {
             log::info!(
@@ -220,30 +277,26 @@ impl From<LSChild> for LoopixSimul {
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum LSRoot {
     // Wait for this many nodes to be online
-    WaitNodes(usize),
+    WaitNodes(usize, usize),
     // Wait for all nodes to report configuration
     WaitConfig(usize),
     // Sends a WebProx-request every 10 seconds
     SendProxyRequest(u32),
-    Done,
 }
 
 impl LSRoot {
-    async fn process(
-        &self,
-        node: &mut Node,
-        i: u32,
-        dir_path: PathBuf,
-    ) -> Result<LoopixSimul, BrokerError> {
+    async fn process(&self, token: String, node: &mut Node, i: u32, retry: u8, duplicates: u8, start_time: Instant, loopix_start_time: u64, save_new_metrics_file: bool) -> Result<LoopixSimul, BrokerError> {
         match self {
-            LSRoot::WaitNodes(n) => {
+            LSRoot::WaitNodes(n, n_clients) => {
                 let path_len = *n;
-                let nodes = (path_len * path_len) + path_len * 2;
+                let nodes = (path_len * (path_len - 1)) + path_len + *n_clients;
+                log::info!("Waiting for {} nodes", *n);
                 let mut node_infos = node.nodes_online().unwrap();
                 node_infos.insert(0, node.node_config.info.clone());
                 log::info!("Found {} of {} nodes", node_infos.len(), nodes);
                 if node_infos.len() == nodes {
-                    let setup = LoopixSetup::new(path_len, node_infos);
+                    let setup = LoopixSetup::new(path_len, node_infos, node.data_save_path.clone().unwrap(), *n_clients);
+                    log::info!("Sending setup event");
                     node.gossip
                         .as_mut()
                         .unwrap()
@@ -257,90 +310,64 @@ impl LSRoot {
                     return Ok(LSRoot::WaitConfig(nodes).into());
                 }
             }
-            LSRoot::WaitConfig(n) => {
-                log::info!("Root is waiting for {} nodes to be configured", n);
-                let events = node
+            LSRoot::WaitConfig(_n) => {
+                log::info!("Waiting for config");
+                let node_configured = node
                     .gossip
                     .as_ref()
                     .unwrap()
                     .storage
-                    .events(Category::LoopixConfig);
-                let node_configured = events.len();
-                let configured_ids: Vec<_> = events.iter().map(|e| e.src).collect();
-                log::info!(
-                    "Root sees {} configured nodes: {:?}",
-                    node_configured,
-                    configured_ids
-                );
-                if node_configured + 1 == *n {
-                    LoopixSetup::node_config(node).await?;
-                    let loopix = node.loopix.as_ref().map(|l| l.storage.clone());
-                    if let Some(loopix) = loopix {
-                        tokio::spawn(save_loopix_storage_periodically(
-                            Arc::clone(&loopix),
-                            dir_path,
-                        ));
-                    }
-                    log::info!("Root is starting to send requests");
-                    return Ok(LSRoot::SendProxyRequest(i + 8).into());
-                }
+                    .events(Category::LoopixConfig)
+                    .len();
+                log::info!("Child sees {} configured nodes", node_configured);
+                LoopixSetup::node_config(node, duplicates, start_time, loopix_start_time).await?;
+                let loopix_storage = node.loopix.as_ref().unwrap().storage.clone();
+                let save_path = node.data_save_path.as_ref().unwrap();
+
+                tokio::spawn(save_metrics_loop(
+                    Arc::clone(&loopix_storage),
+                    save_path.clone(),
+                    save_new_metrics_file,
+                    start_time,
+                ));
+                return Ok(LSRoot::SendProxyRequest(i + 10).into());
             }
-            LSRoot::SendProxyRequest(start) => {
-                if true {
-                    if (i - *start) % 10 == 0 {
-                        log::info!("Sending request through WebProxy");
-                        let start = now();
-                        match node
-                            .webproxy
-                            .as_mut()
-                            .unwrap()
-                            .get_with_timeout("https://ipinfo.io", Duration::from_secs(300))
-                            .await
-                        {
-                            Ok(mut res) => match res.text().await {
-                                Ok(body) => {
-                                    let total_time = now() - start;
-                                    log::info!(
-                                        "----------------------------------------------------------------------- Total time for request: {}ms",
-                                        total_time
-                                    );
-                                    log::info!("----------------------------------------------------------------------- Got reply from webproxy: {}", body);
-                                }
-                                Err(e) => {
-                                    log::info!(" ----------------------------------------------------------------------- Couldn't get body: {e:?}");
-                                }
-                            },
-                            Err(e) => {
-                                log::info!("----------------------------------------------------------------------- Webproxy returned error: {e:?}");
-                            }
-                        }
-                    }
+            LSRoot::SendProxyRequest(_start) => {
+                let timeout = if save_new_metrics_file {
+                    6
                 } else {
-                    log::info!("Sending single request through WebProxy");
-                    let start = now();
-                    match node
-                        .webproxy
-                        .as_mut()
-                        .unwrap()
-                        .get_with_timeout("https://ipinfo.io", Duration::from_secs(10))
-                        .await
-                    {
-                        Ok(mut res) => match res.text().await {
-                            Ok(body) => {
-                                log::info!("----------------------------------------------------------------------- Total time for request: {}ms", now() - start);
-                                log::info!("----------------------------------------------------------------------- Got reply from webproxy: {}", body);
-                            }
-                            Err(e) => log::info!(" ----------------------------------------------------------------------- Couldn't get body: {e:?}"),
-                        },
-                        Err(e) => log::info!("----------------------------------------------------------------------- Webproxy returned error: {e:?}"),
-                    }
-                    return Ok(LSRoot::Done.into());
+                    20
+                };
+                let start = now();
+                let start_time = Instant::now();
+                NUMBER_OF_PROXY_REQUESTS.inc();
+                let timeout_duration = Duration::from_secs(timeout + 3);
+                match tokio::time::timeout(timeout_duration, node
+                    .webproxy
+                    .as_mut()
+                    .unwrap()
+                    .get_with_retry_and_timeout(&format!("https://ipinfo.io?token={}", token), retry, Duration::from_secs(timeout))
+                    // .get_with_retry_and_timeout_with_duplicates(&format!("https://ipinfo.io?token={}", token), retry, duplicates, Duration::from_secs(timeout))
+                ).await {
+                    Ok(Ok(mut res)) => match res.text().await {
+                        Ok(body) => {
+                            let end_to_end_time = start_time.elapsed().as_secs_f64();
+                            END_TO_END_LATENCY.observe(end_to_end_time);
+                            log::info!(
+                                "---------------- Total time for request: {}ms",
+                                now() - start
+                            );
+                            log::info!("---------------- Got reply from webproxy: {}", body);
+                        }
+                        Err(e) => log::info!("---------------- Couldn't get body: {e:?}"),
+                    },
+                    Ok(Err(e)) => log::info!("---------------- Webproxy returned error: {e:?}"),
+                    Err(_) => log::info!("---------------- Request timed out"),
                 }
-            }
-            LSRoot::Done => {
-                log::info!("Root is done");
+                log::info!("---------------- Webproxy returned!");
             }
         }
+        
         Ok((*self).into())
     }
 }
@@ -349,40 +376,78 @@ impl LSRoot {
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum LSChild {
     WaitConfig,
+    ProxyRequesting(u32),
     ProxyReady,
 }
 
 impl LSChild {
-    async fn process(
-        &self,
-        node: &mut Node,
-        dir_path: PathBuf,
-    ) -> Result<LoopixSimul, BrokerError> {
+    async fn process(&self, token: String, node: &mut Node, i: u32, retry: u8, duplicates: u8, start_time: Instant, loopix_start_time: u64, save_new_metrics_file: bool) -> Result<LoopixSimul, BrokerError> {
         match self {
             LSChild::WaitConfig => {
-                if LoopixSetup::node_config(node).await? {
+                log::info!("Child is waiting for config");
+                let setup = LoopixSetup::node_config(node, duplicates, start_time, loopix_start_time).await?;
+                if let Some(setup) = setup {
                     log::info!("{} got setup", node.node_config.info.name);
-                    node.gossip
-                        .as_mut()
-                        .unwrap()
-                        .add_event(Event {
-                            category: Category::LoopixConfig,
-                            src: node.node_config.info.get_id(),
-                            created: now(),
-                            msg: "Setup done".into(),
-                        })
-                        .await?;
-                    let loopix = node.loopix.as_ref().map(|l| l.storage.clone());
-                    if let Some(loopix) = loopix {
-                        tokio::spawn(save_loopix_storage_periodically(
-                            Arc::clone(&loopix),
-                            dir_path,
-                        ));
+
+                    let loopix_storage = node.loopix.as_ref().unwrap().storage.clone();
+                    let save_path = node.data_save_path.as_ref().unwrap();
+
+
+                    tokio::spawn(save_metrics_loop(
+                        Arc::clone(&loopix_storage),
+                        save_path.clone(),
+                        save_new_metrics_file,
+                        start_time,
+                    ));
+                    if setup.role == LoopixRole::Client {
+                        return Ok(LSChild::ProxyRequesting(i + 10).into());
+                    } else {
+                        return Ok(LSChild::ProxyReady.into());
                     }
-                    return Ok(LSChild::ProxyReady.into());
                 }
+            } 
+
+            LSChild::ProxyRequesting(_start) => {
+                let timeout = if save_new_metrics_file {
+                    6
+                } else {
+                    20
+                };
+                log::info!("Sending request through WebProxy at {} seconds since start with timeout {:?}", start_time.elapsed().as_secs_f64(), Duration::from_secs(timeout));
+                let _start = now();
+                let start_time = Instant::now();
+                NUMBER_OF_PROXY_REQUESTS.inc();
+                let start = now();
+                let timeout_duration = Duration::from_secs(timeout);
+                match tokio::time::timeout(timeout_duration, node
+                    .webproxy
+                    .as_mut()
+                    .unwrap()
+                    .get_with_retry_and_timeout(&format!("https://ipinfo.io?token={}", token), retry, Duration::from_secs(timeout))
+                    // .get_with_retry_and_timeout_with_duplicates(&format!("https://ipinfo.io?token={}", token), retry, duplicates, Duration::from_secs(timeout))
+                ).await {
+                    Ok(Ok(mut res)) => match res.text().await {
+                        Ok(body) => {
+                            let end_to_end_time = start_time.elapsed().as_secs_f64();
+                            END_TO_END_LATENCY.observe(end_to_end_time);
+                            log::info!(
+                                "---------------- Total time for request: {}ms",
+                                now() - start
+                            );
+                            log::info!("---------------- Got reply from webproxy: {}", body);
+                        }
+                        Err(e) => log::info!("---------------- Couldn't get body: {e:?}"),
+                    },
+                    Ok(Err(e)) => log::info!("---------------- Webproxy returned error: {e:?}"),
+                    Err(_) => log::info!("---------------- Request timed out"),
+                }
+                log::info!("---------------- Webproxy returning!");
+                return Ok(LSChild::ProxyRequesting(i + 10).into());
             }
-            LSChild::ProxyReady => {}
+            LSChild::ProxyReady => {
+                log::info!("Child is proxy ready");
+            }
+
         }
 
         Ok((*self).into())
@@ -400,60 +465,79 @@ pub struct LoopixSetup {
     pub loopix_key_pairs: HashMap<NodeID, (PublicKey, StaticSecret)>,
     pub path_length: usize,
     pub all_nodes: Vec<NodeInfo>,
+    pub config: String,
+    pub role: LoopixRole,
+    pub n_clients: usize,
 }
 
 impl LoopixSetup {
-    pub async fn node_config(node: &mut Node) -> Result<bool, BrokerError> {
+    pub async fn node_config(node: &mut Node, duplicates: u8, start_time: Instant, loopix_start_time: u64) -> Result<Option<LoopixSetup>, BrokerError> {
+        // TODO case where loopix storage exists, so we're loading an already existign node
+        log::info!("Current time since start: {}", start_time.elapsed().as_secs_f64());
         let events = node.gossip.as_ref().unwrap().events(Category::LoopixSetup);
         if let Some(event) = events.get(0) {
-            // DEBUG: if you set this to 'false', loopix will not be setup, and you'll just see
-            // how the rest of the system sets up.
-            if true {
-                let setup = serde_json::from_str::<LoopixSetup>(&event.msg)
-                    .expect("deserializing loopix setup");
-                let our_id = node.node_config.info.get_id();
-                let (loopix, overlay) = setup.get_brokers(our_id, node.broker_net.clone()).await?;
-                node.loopix = Some(loopix);
-                node.webproxy = Some(
-                    WebProxy::start(
-                        node.storage.clone(),
-                        our_id,
-                        overlay,
-                        WebProxyConfig::default(),
-                    )
-                    .await
-                    .expect("Starting new WebProxy"),
-                );
+            // get event and setup info
+            let mut setup = serde_json::from_str::<LoopixSetup>(&event.msg)
+            .expect("deserializing loopix setup");
+            let our_id = node.node_config.info.get_id();
+
+            // let root know that node is ready
+            node.gossip
+            .as_mut()
+            .unwrap()
+            .add_event(Event {
+                category: Category::LoopixConfig,
+                src: node.node_config.info.get_id(),
+                created: now(),
+                msg: "Setup done".into(),
+            })
+            .await?;
+
+            log::info!("NodeID {} is ready, waiting for loopix start time", node.node_config.info.get_id());
+
+            // wait until scheduled start time
+            while start_time.elapsed().as_secs() < loopix_start_time {
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            return Ok(true);
+            let (loopix, overlay) = setup.get_brokers(our_id, node.broker_net.clone(), duplicates).await?;
+
+            log::info!("NodeID {} is ready, starting loopix", node.node_config.info.get_id());
+            LOOPIX_START_TIME.set(start_time.elapsed().as_secs_f64());
+
+            // start loopix and webproxy
+            node.loopix = Some(loopix);
+            node.webproxy = Some(
+                WebProxy::start(
+                    node.storage.clone(),
+                    our_id,
+                    overlay,
+                    WebProxyConfig::default(),
+                )
+                .await
+                .expect("Starting new WebProxy"),
+            );
+            
+            return Ok(Some(setup));
         }
-        Ok(false)
+        Ok(None)
     }
 
-    pub fn new(path_length: usize, all_nodes: Vec<NodeInfo>) -> Self {
+    pub fn new(path_length: usize, all_nodes: Vec<NodeInfo>, config: String, n_clients: usize) -> Self {
         let (node_public_keys, loopix_key_pairs) = Self::create_nodes_and_keys(all_nodes.clone());
-
-        let clients: Vec<_> = all_nodes.iter().take(path_length).collect();
-        let providers: Vec<_> = all_nodes.iter().skip(path_length).take(path_length).collect();
-        let mixnodes: Vec<_> = all_nodes.iter().skip(path_length * 2).collect();
-
-        log::info!(
-            "\n--------------------------------------------------------\nClients: {:#?}\nProviders: {:#?}\nMixnodes: {:#?}\n--------------------------------------------------------\n",
-            clients,
-            providers,
-            mixnodes
-        );
-
+        log::info!("New loopix setup with {} nodes", all_nodes.len());
         Self {
             node_public_keys,
             loopix_key_pairs,
             path_length,
             all_nodes,
+            config,
+            role: LoopixRole::Client,
+            n_clients,
         }
     }
 
     pub fn create_nodes_and_keys(
-        all_nodes: Vec<NodeInfo>,
+        all_nodes: Vec<NodeInfo>
     ) -> (
         HashMap<NodeID, PublicKey>,
         HashMap<NodeID, (PublicKey, StaticSecret)>,
@@ -473,25 +557,34 @@ impl LoopixSetup {
     }
 
     pub async fn get_brokers(
-        &self,
+        &mut self,
         node_id: NodeID,
         net: Broker<NetworkMessage>,
+        duplicates: u8,
     ) -> Result<(LoopixBroker, Broker<OverlayMessage>), BrokerError> {
         let pos = self
             .all_nodes
             .iter()
             .position(|node| node.get_id() == node_id)
             .expect("node_id in list");
-        let role = if pos < self.path_length {
+        log::info!("Node list: {:?}", self.all_nodes);
+        log::info!("NodeID {} is at position {}", node_id, pos);
+        let role = if pos < self.n_clients {
+            log::info!("Role: Client");
             LoopixRole::Client
-        } else if pos < self.path_length * 2 {
+        } else if pos < self.n_clients + self.path_length {
+            log::info!("Role: Provider");
             LoopixRole::Provider
         } else {
+            log::info!("Role: Mixnode");
             LoopixRole::Mixnode
         };
+
+        self.role = role.clone();
         let config = self.get_config(node_id, role).await?;
-        let loopix_broker = LoopixBroker::start(net, config).await?;
+        let loopix_broker = LoopixBroker::start(net, config, duplicates).await?;
         let overlay = OverlayLoopix::start(loopix_broker.broker.clone()).await?;
+
         wait_ms(3000).await;
         Ok((loopix_broker, overlay))
     }
@@ -504,21 +597,35 @@ impl LoopixSetup {
         let private_key = &self.loopix_key_pairs.get(&node_id).unwrap().1;
         let public_key = &self.loopix_key_pairs.get(&node_id).unwrap().0;
 
-        let config_path = PathBuf::from("./loopix_core_config.yaml");
+        let mut config_path = PathBuf::from(&self.config);
+        config_path.push("loopix_core_config.yaml");
 
         let config_str = std::fs::read_to_string(config_path.clone()).unwrap();
-
         let core_config: CoreConfig = serde_yaml::from_str(&config_str).unwrap();
 
-        let config = LoopixConfig::default_with_core_config_and_path_length(
-            role,
-            node_id,
-            self.path_length as usize,
-            private_key.clone(),
-            public_key.clone(),
-            self.all_nodes.clone(),
-            core_config,
-        );
+        // "loopix_storage.yaml" is in self.config directory load it into memory
+        let mut storage_path = PathBuf::from(&self.config);
+        storage_path.push("loopix_storage.yaml");
+
+        let config;
+        if storage_path.exists() {
+            log::info!("Storage path: {:?}", storage_path);
+            let storage_str = std::fs::read_to_string(storage_path.clone()).unwrap();
+            let storage: LoopixStorage = serde_yaml::from_str(&storage_str).unwrap();
+            log::info!("Storage: {}", storage_str);
+            config = LoopixConfig::new(role, storage, core_config).await;
+        } else {
+            config = LoopixConfig::default_with_path_length_and_n_clients(
+                role,
+                node_id,
+                self.path_length as usize,
+                self.n_clients,
+                private_key.clone(),
+                public_key.clone(),
+                self.all_nodes.clone(),
+                core_config,
+            );
+        }
 
         config
             .storage_config

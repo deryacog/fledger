@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Instant, SystemTime};
 
 use crate::loopix::config::CoreConfig;
 use crate::loopix::core::LoopixCore;
@@ -12,6 +13,8 @@ use async_trait::async_trait;
 use flarch::nodeids::NodeID;
 use sphinx_packet::payload::Payload;
 use sphinx_packet::SphinxPacket;
+
+use super::ENCRYPTION_LATENCY;
 
 #[derive(Debug, PartialEq)]
 pub struct Client {
@@ -45,6 +48,8 @@ impl LoopixCore for Client {
         let our_provider = self.get_our_provider().await;
 
         // create route
+        // As a client, the node routes it's loop message through its own provider
+        // since this is a loop message, the node sets the destination to it's own ID
         let route = self
             .create_route(
                 self.get_config().path_length(),
@@ -55,7 +60,6 @@ impl LoopixCore for Client {
             .await;
 
         // create the networkmessage
-
         let loop_msg = serde_yaml::to_string(&MessageType::Loop).unwrap();
         let msg = NetworkWrapper {
             module: MODULE_NAME.into(),
@@ -65,9 +69,9 @@ impl LoopixCore for Client {
         // create sphinx packet
         let our_provider = self.get_our_provider().await.unwrap();
         let (_, sphinx) = self.create_sphinx_packet(our_provider, msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::Loop, sphinx.message_id.clone())
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::Loop, sphinx.message_id.clone())
+        //     .await; // TODO uncomment
         (our_provider, sphinx)
     }
 
@@ -79,7 +83,7 @@ impl LoopixCore for Client {
     ) -> (
         NodeID,
         Option<NetworkWrapper>,
-        Option<(NodeID, Vec<Sphinx>)>,
+        Option<(NodeID, Vec<(Sphinx, Option<SystemTime>)>)>,
         Option<MessageType>,
     ) {
         if destination != self.get_our_id().await {
@@ -107,22 +111,23 @@ impl LoopixCore for Client {
                 if let Ok(message) = serde_yaml::from_str::<MessageType>(&module_message.msg) {
                     match message.clone() {
                         MessageType::Payload(source, msg) => {
+                            log::info!("Client received payload from {}: {:?}", source, msg);
                             (source, Some(msg), None, Some(message))
                         }
                         MessageType::PullRequest(client_id) => {
-                            log::error!("Client shouldn't receive pull requests!");
+                            log::warn!("Client shouldn't receive pull requests!");
                             (client_id, None, None, Some(message))
                         }
                         MessageType::SubscriptionRequest(client_id) => {
-                            log::error!("Client shouldn't receive subscription requests!");
+                            log::warn!("Client shouldn't receive subscription requests!");
                             (client_id, None, None, Some(message))
                         }
                         MessageType::Drop => {
-                            log::trace!("Client received drop");
+                            log::warn!("Client received drop");
                             (destination, None, None, Some(message))
                         }
                         MessageType::Loop => {
-                            log::trace!("Client received loop");
+                            log::warn!("Client received loop");
                             (destination, None, None, Some(message))
                         }
                         MessageType::Dummy => {
@@ -208,6 +213,8 @@ impl Client {
         };
 
         // create route
+        // As a client, the node routes it's drop message through its own provider
+        // it chooses a random provider as the destination
         let route = self
             .create_route(
                 self.get_config().path_length(),
@@ -226,9 +233,9 @@ impl Client {
 
         // create sphinx packet
         let (_, sphinx) = self.create_sphinx_packet(random_provider, msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::Drop, sphinx.message_id.clone())
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::Drop, sphinx.message_id.clone())
+        //     .await; // TODO uncomment
 
         (our_provider, sphinx)
     }
@@ -246,6 +253,7 @@ impl Client {
         let provider = our_provider.unwrap();
 
         //create route (path length is 0 because we directly send to the provider)
+        // there only the destination, which is the the nodes' own provider
         let route = self.create_route(0, None, None, Some(provider)).await;
 
         // create the networkmessage
@@ -257,9 +265,9 @@ impl Client {
 
         // create sphinx packet
         let (_, sphinx) = self.create_sphinx_packet(provider, msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::PullRequest(our_id), sphinx.message_id.clone())
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::PullRequest(our_id), sphinx.message_id.clone())
+        //     .await; // TODO uncomment
         (provider, Some(sphinx))
     }
 
@@ -277,6 +285,7 @@ impl Client {
         };
 
         // create route (path length is 0 because we directly send to the provider)
+        // there only the destination, which is the the nodes' chosen provider
         let route = self.create_route(0, None, None, Some(provider)).await;
 
         // create the networkmessage
@@ -290,9 +299,9 @@ impl Client {
 
         // create sphinx packet
         let (_, sphinx) = self.create_sphinx_packet(provider, msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::SubscriptionRequest(our_id), sphinx.message_id.clone())
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::SubscriptionRequest(our_id), sphinx.message_id.clone())
+        //     .await; // TODO uncomment
         (provider, sphinx)
     }
 
@@ -301,7 +310,10 @@ impl Client {
         node_id: NodeID,
         message: NetworkWrapper,
     ) -> (NodeID, Sphinx) {
+        let start_time = Instant::now();
         let (next_node, sphinx) = self.create_payload_message(node_id, message).await;
+        let end_time = start_time.elapsed().as_millis() as f64;
+        ENCRYPTION_LATENCY.observe(end_time);
         (next_node, sphinx)
     }
 
@@ -319,6 +331,9 @@ impl Client {
         let our_provider = self.get_our_provider().await;
 
         // create route
+        // As a client, the node routes it's payload message through its own provider
+        // the destination is the destination client node
+        // the message is routed to the destinations provider before ending at the destination client node
         let route = self
             .create_route(
                 self.get_config().path_length(),
@@ -338,10 +353,10 @@ impl Client {
 
         // create sphinx packet
         let (_, sphinx) = self.create_sphinx_packet(destination, network_msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::Payload(our_id, msg), sphinx.message_id.clone())
-            .await;
-        log::info!("Sent message {} to {}", sphinx.message_id, destination);
+        // self.storage
+        //     .add_sent_message(route, MessageType::Payload(our_id, msg), sphinx.message_id.clone())
+        //     .await;
+        log::trace!("Sent message {} to {}", sphinx.message_id, destination);
         (our_provider.unwrap(), sphinx)
     }
 }
@@ -480,7 +495,7 @@ mod tests {
             assert_eq!(next_node, node_id);
             let key_pair = key_pairs.get(&node_id).unwrap();
             let static_secret = &key_pair.1;
-            
+
             let processed = match sphinx_packet.clone().inner.process(&static_secret) {
                 Ok(processed) => processed,
                 Err(e) => {
@@ -642,7 +657,9 @@ mod tests {
                             let msg =
                                 serde_yaml::from_str::<MessageType>(&module_message.msg).unwrap();
                             match msg {
-                                MessageType::SubscriptionRequest(id) => assert_eq!(id, client.get_our_id().await),
+                                MessageType::SubscriptionRequest(id) => {
+                                    assert_eq!(id, client.get_our_id().await)
+                                }
                                 _ => assert!(false),
                             }
                         } else {

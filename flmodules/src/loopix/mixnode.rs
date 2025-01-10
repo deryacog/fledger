@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::loopix::broker::MODULE_NAME;
 
@@ -63,7 +64,7 @@ impl LoopixCore for Mixnode {
     ) -> (
         NodeID,
         Option<NetworkWrapper>,
-        Option<(NodeID, Vec<Sphinx>)>,
+        Option<(NodeID, Vec<(Sphinx, Option<SystemTime>)>)>,
         Option<MessageType>,
     ) {
         if destination != self.get_our_id().await {
@@ -79,15 +80,15 @@ impl LoopixCore for Mixnode {
                 if let Ok(message) = serde_yaml::from_str::<MessageType>(&module_message.msg) {
                     match message {
                         MessageType::Payload(_, _) => {
-                            log::error!("Mixnode shouldn't receive payloads!");
+                            log::warn!("Mixnode shouldn't receive payloads!");
                             (destination, None, None, Some(message))
                         }
                         MessageType::PullRequest(_) => {
-                            log::error!("Mixnode shouldn't receive pull requests!");
+                            log::warn!("Mixnode shouldn't receive pull requests!");
                             (destination, None, None, Some(message))
                         }
                         MessageType::SubscriptionRequest(_) => {
-                            log::error!("Mixnode shouldn't receive subscription requests!");
+                            log::warn!("Mixnode shouldn't receive subscription requests!");
                             (destination, None, None, Some(message))
                         }
                         MessageType::Drop => {
@@ -99,7 +100,7 @@ impl LoopixCore for Mixnode {
                             (destination, None, None, Some(message))
                         }
                         MessageType::Dummy => {
-                            log::error!("Mixnode shouldn't receive dummy messages!");
+                            log::warn!("Mixnode shouldn't receive dummy messages!");
                             (destination, None, None, Some(message))
                         }
                     }
@@ -128,6 +129,8 @@ impl LoopixCore for Mixnode {
         let random_provider = providers.iter().next().unwrap();
 
         // create route
+        // As a mixnode, the node routes it's loop message through a random provider
+        // the destination is the node's own ID
         let route = self
             .create_route(
                 self.get_config().path_length(),
@@ -146,9 +149,9 @@ impl LoopixCore for Mixnode {
 
         // create sphinx packet
         let (next_node, sphinx) = self.create_sphinx_packet(our_id, msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::Loop, sphinx.message_id.clone())
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::Loop, sphinx.message_id.clone())
+        //     .await; // TODO uncomment
         (node_id_from_node_address(next_node.address), sphinx)
     }
 

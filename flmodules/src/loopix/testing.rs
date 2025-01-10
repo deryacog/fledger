@@ -46,7 +46,7 @@ pub struct LoopixNode {
 impl LoopixNode {
     pub async fn new(loopix_cfg: LoopixConfig, config: NodeConfig) -> Result<Self, BrokerError> {
         let net = Broker::new();
-        let loopix_broker = LoopixBroker::start(net.clone(), loopix_cfg).await?;
+        let loopix_broker = LoopixBroker::start(net.clone(), loopix_cfg, 1).await?;
 
         let overlay = OverlayLoopix::start(loopix_broker.broker.clone()).await?;
         Ok(Self {
@@ -310,8 +310,8 @@ impl LoopixSetup {
             println!("{:<60} {:<20} {:<20} {:<20}", "Client ID", "Message Type", "Message ID", "Message ID");
             println!("{:-<300}", "");
             for (client_id, messages) in client_messages {
-                for sphinx in messages {
-                    println!("{:<60} {:<20} {:<20} {:<20}", format!("{:x}", client_id), format!("{:?}", sphinx), format!("{:?}", sphinx.message_id.clone()), format!("{:?}", sphinx.message_id.clone()));
+                for (sphinx, timestamp) in messages {
+                    println!("{:<60} {:<20} {:<20} {:<20}", format!("{:x}", client_id), format!("{:?}", sphinx), format!("{:?}", sphinx.message_id.clone()), format!("{:?}", timestamp));
                 }
             }
         }

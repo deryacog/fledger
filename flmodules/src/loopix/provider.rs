@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::overlay::messages::NetworkWrapper;
 
@@ -44,6 +45,8 @@ impl LoopixCore for Provider {
         let random_provider = providers.iter().next().unwrap();
 
         // create route
+        // As a provider, the node routes it's loop message a random provider
+        // the destination is the node's own ID
         let route = self
             .create_route(
                 self.get_config().path_length(),
@@ -62,9 +65,9 @@ impl LoopixCore for Provider {
 
         // create sphinx packet
         let (next_node, sphinx) = self.create_sphinx_packet(our_id, msg, &route);
-        self.storage
-            .add_sent_message(route, MessageType::Loop, sphinx.message_id.clone())
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::Loop, sphinx.message_id.clone())
+        //     .await; // TODO uncomment
         (node_id_from_node_address(next_node.address), sphinx)
     }
 
@@ -76,7 +79,7 @@ impl LoopixCore for Provider {
     ) -> (
         NodeID,
         Option<NetworkWrapper>,
-        Option<(NodeID, Vec<Sphinx>)>,
+        Option<(NodeID, Vec<(Sphinx, Option<SystemTime>)>)>,
         Option<MessageType>,
     ) {
         if destination != self.get_our_id().await {
@@ -91,16 +94,12 @@ impl LoopixCore for Provider {
                 if let Ok(message) = serde_yaml::from_str::<MessageType>(&module_message.msg) {
                     match message {
                         MessageType::Payload(_, _) => {
-                            log::error!("Provider shouldn't receive payloads!");
+                            log::warn!("Provider shouldn't receive payloads!");
                             (destination, None, None, Some(message))
                         }
                         MessageType::PullRequest(client_id) => {
-                            let messages = self.create_pull_reply(client_id).await;
-                            log::trace!(
-                                "Provider received pull request from client: {:?}",
-                                client_id
-                            );
-                            (client_id, None, Some(messages), Some(message))
+                            let (client_id, messages) = self.create_pull_reply(client_id).await;
+                            (client_id, None, Some((client_id, messages)), Some(message))
                         }
                         MessageType::SubscriptionRequest(client_id) => {
                             self.get_storage().add_subscribed_client(client_id).await;
@@ -146,17 +145,20 @@ impl LoopixCore for Provider {
         next_node: NodeID,
         message_id: String,
     ) -> (NodeID, Option<Sphinx>) {
+        // check if the message is for one of our clients
         if self
             .get_storage()
             .get_subscribed_clients()
             .await
             .contains(&next_node)
         {
-            log::debug!(
+            log::info!(
                 "Provider received message for subscribed client: {:?} {:?}",
                 next_node,
                 message_id
             );
+
+            // store the message
             let sphinx = &Sphinx {
                 message_id,
                 inner: *next_packet,
@@ -164,6 +166,8 @@ impl LoopixCore for Provider {
             self.store_client_message(next_node, sphinx.clone()).await;
 
             (next_node, None)
+
+        // otherwise just forward the message
         } else {
             // THIS IS COPY PASTED FROM MIXNODE, I JUST DON'T KNOW HOW TO DO TRAITS IN RUST
             let sphinx = &Sphinx {
@@ -199,12 +203,17 @@ impl Provider {
         self.get_storage().add_subscribed_client(client_id).await;
     }
 
-    pub async fn get_client_messages(&self, client_id: NodeID) -> Vec<Sphinx> {
+    pub async fn get_client_messages(
+        &self,
+        client_id: NodeID,
+    ) -> Vec<(Sphinx, Option<SystemTime>)> {
         self.get_storage().get_client_messages(client_id).await
     }
 
     pub async fn store_client_message(&self, client_id: NodeID, message: Sphinx) {
-        self.get_storage().add_client_message(client_id, message).await
+        self.get_storage()
+            .add_client_message(client_id, message)
+            .await
     }
 
     pub async fn create_dummy_message(&self, client_id: NodeID) -> Sphinx {
@@ -221,15 +230,17 @@ impl Provider {
         // create sphinx packet
         let (_, sphinx) = self.create_sphinx_packet(client_id, msg, &route);
 
-        // create delay
-        self.storage
-            .add_sent_message(route, MessageType::Dummy, sphinx.message_id.clone()  )
-            .await; // TODO uncomment
+        // self.storage
+        //     .add_sent_message(route, MessageType::Dummy, sphinx.message_id.clone())
+        //     .await; // TODO uncomment
 
         sphinx
     }
 
-    pub async fn create_pull_reply(&self, client_id: NodeID) -> (NodeID, Vec<Sphinx>) {
+    pub async fn create_pull_reply(
+        &self,
+        client_id: NodeID,
+    ) -> (NodeID, Vec<(Sphinx, Option<SystemTime>)>) {
         // get max send amount and messages
         log::trace!("Creating pull reply for client: {}", client_id);
         let max_retrieve = self.get_config().max_retrieve();
@@ -242,14 +253,6 @@ impl Provider {
             messages_to_send.push(message.clone());
         }
 
-        if !messages_to_send.is_empty() {
-            let message_details: Vec<_> = messages
-                .iter()
-                .map(|sphinx| &sphinx.message_id)
-                .collect();
-            log::debug!("Pull reply message IDs: {:?}", message_details);
-        }
-
         self.get_storage()
             .update_client_message_index(client_id, index + messages_to_send.len())
             .await;
@@ -257,7 +260,7 @@ impl Provider {
         // pad vec if not enough messages
         for _ in messages_to_send.len()..max_retrieve {
             let sphinx = self.create_dummy_message(client_id).await;
-            messages_to_send.push(sphinx);
+            messages_to_send.push((sphinx, None));
         } // TODO uncomment
 
         (client_id, messages_to_send)

@@ -33,8 +33,8 @@ impl LoopixConfig {
         }
     }
 
-    pub fn new(role: LoopixRole, storage: LoopixStorage, core_config: CoreConfig) -> Self {
-        let network_storage = storage.network_storage.blocking_read().clone();
+    pub async fn new(role: LoopixRole, storage: LoopixStorage, core_config: CoreConfig) -> Self {
+        let network_storage = storage.network_storage.read().await.clone();
         let mixes = network_storage.get_mixes();
         if core_config.path_length() != mixes.len() {
             panic!("Path length in core config does not match path length in storage");
@@ -154,17 +154,77 @@ impl LoopixConfig {
             storage_config: storage,
         }
     }
+
+    pub fn default_with_path_length_and_n_clients(
+        role: LoopixRole,
+        our_node_id: NodeID,
+        path_length: usize,
+        n_clients: usize,
+        private_key: StaticSecret,
+        public_key: PublicKey,
+        all_nodes: Vec<NodeInfo>,
+        core_config: CoreConfig,
+    ) -> Self {
+        let client_storage = match role {
+            LoopixRole::Client => {
+                Some(ClientStorage::default_with_path_length_and_n_clients(
+                    our_node_id,
+                    all_nodes.clone(),
+                    path_length,
+                    n_clients,
+                ))
+            }
+            _ => None,
+        };
+
+        let provider_storage = match role {
+            LoopixRole::Provider => {
+                Some(ProviderStorage::default_with_path_length())
+            }
+            _ => None,
+        };
+
+        if (client_storage.is_none() 
+            && provider_storage.is_none() 
+            && !all_nodes
+                .clone()
+                .into_iter()
+                .skip(path_length * 2)
+                .any(|node| node.get_id() == our_node_id))
+            && (role == LoopixRole::Mixnode)
+        {
+            log::error!("Node ID {} not found in {:?}", our_node_id, all_nodes);
+            panic!("Our node id must be between the path length and 2 times the path length");
+        }
+        
+        let storage = LoopixStorage::default_with_path_length_and_n_clients(
+            our_node_id,
+            path_length,
+            n_clients,
+            private_key,
+            public_key,
+            client_storage,
+            provider_storage,
+            all_nodes,
+        );
+
+        LoopixConfig {
+            role,
+            core_config,
+            storage_config: storage,
+        }
+    }
 }
 
 //////////////////////////////////////// Core Config ////////////////////////////////////////
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CoreConfig {
-    lambda_loop: f64, // Loop traffic rate (user) (per minute)
-    lambda_drop: f64, // Drop cover traffic rate (user) (per minute)
-    lambda_payload: f64, // Payload traffic rate (user) (per minute)
+    lambda_loop: f64, // Loop traffic rate (user) (per second)
+    lambda_drop: f64, // Drop cover traffic rate (user) (per second)
+    lambda_payload: f64, // Payload traffic rate (user) (per second)
     path_length: usize, // Path length (user)
-    mean_delay: u64, // The mean delay at mix Mi (microseconds)
-    lambda_loop_mix: f64, // Loop traffic rate (mix) (per minute)
+    mean_delay: u64, // The mean delay at mix Mi (milliseconds)
+    lambda_loop_mix: f64, // Loop traffic rate (mix) (per second)
     time_pull: f64, // Time pull (user) (seconds)
     max_retrieve: usize, // Max retrieve (provider)
     pad_length: usize // TODO implement
@@ -173,12 +233,12 @@ pub struct CoreConfig {
 impl CoreConfig {
     pub fn default_mixnode(path_length: usize) -> Self {
         CoreConfig {
-            lambda_loop: 10.0, // loop rate (10 times per minute)
-            lambda_drop: 10.0, // drop rate (10 times per minute)
-            lambda_payload: 0.0, // payload rate (0 times per minute)
+            lambda_loop: 10.0, // loop rate (10 messages per second)
+            lambda_drop: 10.0, // drop rate (10 messages per second)
+            lambda_payload: 0.0, // payload rate (0 messages per second)
             path_length,
-            mean_delay: 500, // mean delay (ms)
-            lambda_loop_mix: 10.0, // loop mix rate (10 times per minute)
+            mean_delay: 2, // mean delay (ms)
+            lambda_loop_mix: 10.0, // loop mix rate (10 messages per second)
             time_pull: 0.0, // time pull (3 second)
             max_retrieve: 0, // messages sent to client per pull request
             pad_length: 150, // dummy, drop, loop messages are padded
@@ -191,7 +251,7 @@ impl CoreConfig {
             lambda_drop: 10.0,
             lambda_payload: 0.0,
             path_length,
-            mean_delay: 2000,
+            mean_delay: 2,
             lambda_loop_mix: 10.0,
             time_pull: 0.0,
             max_retrieve: 5,
@@ -205,7 +265,7 @@ impl CoreConfig {
             lambda_drop: 10.0,
             lambda_payload: 120.0,
             path_length,
-            mean_delay: 2000,
+            mean_delay: 2,
             lambda_loop_mix: 0.0,
             time_pull: 3.0,
             max_retrieve: 0,
@@ -221,7 +281,7 @@ impl Default for CoreConfig {
             lambda_drop: 10.0,
             lambda_payload: 120.0,
             path_length: 3,
-            mean_delay: 2000,
+            mean_delay: 2,
             lambda_loop_mix: 10.0,
             time_pull: 3.0,
             max_retrieve: 10,
