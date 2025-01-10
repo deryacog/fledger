@@ -4,7 +4,7 @@ import json
 import sys
 import os
 
-x_axis_name = {"lambda_loop": "Loop and Drop Messages per Second", "lambda_payload": "Payload Messages per Second from the Client"}
+x_axis_name = {"mean_delay": "Mean Delay (ms)", "lambda_loop": "Loop and Drop Messages per Second", "lambda_payload": "Payload Messages per Second from the Client"}
 
 
 def get_data(directory):
