@@ -44,10 +44,308 @@
 @string{Oakland="IEEE International Symposium on Security and Privacy"}
 @string{PST="IEEE Conference on Privacy, Security, and Trust"}
 
-@inproceedings{dinesh20oakland,
-  author = {Sushant Dinesh and Nathan Burow and Dongyan Xu and Mathias Payer},
-  title = {{RetroWrite: Statically Instrumenting COTS Binaries for Fuzzing and Sanitization}},
-  year = {2020},
-  booktitle = Oakland,
-  keywords = {conference},
+@misc{loopix,
+      title={The Loopix Anonymity System}, 
+      author={Ania Piotrowska and Jamie Hayes and Tariq Elahi and Sebastian Meiser and George Danezis},
+      year={2017},
+      eprint={1703.00536},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/1703.00536}, 
 }
+
+@misc{medium,
+  title = {Medium},
+  howpublished = {\url{https://wiprotechblogs.medium.com/choice-of-signaling-server-in-web-real-time-communication-e771c1ccf60d}},
+  note = {Accessed: 2025-01-3}
+}
+
+@article{raptor,
+author = {Shokrollahi, Amin},
+title = {Raptor codes},
+year = {2006},
+issue_date = {June 2006},
+publisher = {IEEE Press},
+volume = {14},
+number = {SI},
+issn = {1063-6692},
+url = {https://doi.org/10.1109/TIT.2006.874390},
+doi = {10.1109/TIT.2006.874390},
+abstract = {LT-codes are a new class of codes introduced by Luby for the purpose of scalable and fault-tolerant distribution of data over computer networks. In this paper, we introduce Raptor codes, an extension of LT-codes with linear time encoding and decoding. We will exhibit a class of universal Raptor codes: for a given integer k and any real ε > 0, Raptor codes in this class produce a potentially infinite stream of symbols such that any subset of symbols of size k(1 + ε) is sufficient to recover the original k symbols with high probability. Each output symbol is generated using O(log(1/ ε)) operations, and the original symbols are recovered from the collected ones with O(k log(1/ε)) operations.We will also introduce novel techniques for the analysis of the error probability of the decoder for finite length Raptor codes. Moreover, we will introduce and analyze systematic versions of Raptor codes, i.e., versions in which the first output elements of the coding system coincide with the original k elements.},
+journal = {IEEE/ACM Trans. Netw.},
+month = jun,
+pages = {2551–2567},
+numpages = {17},
+keywords = {LT-codes, binary erasure channel (BEC), graphical codes, networking}
+}
+
+@misc{sphere_infrastructure,
+  author       = {SPHERE Project},
+  title        = {SPHERE: Security and Privacy Heterogeneous Environment for Reproducible Experimentation},
+  howpublished = {\url{https://sphere-project.net/}},
+  note         = {Accessed: 2025-01-10},
+}
+
+
+@misc{sphinx-packet,
+  author       = {Crates.io},
+  title        = {sphinx-packet: Implementation of the Sphinx Packet Format},
+  howpublished = {\url{https://crates.io/crates/sphinx-packet}},
+  note         = {Accessed: 2025-01-10},
+}
+
+
+@misc{nymtech-sphinx,
+  author       = {Nym Technologies},
+  title        = {sphinx-packet: Implementation of the Sphinx Packet Format},
+  howpublished = {\url{https://github.com/nymtech/sphinx}},
+  note         = {Accessed: 2025-01-10},
+}
+
+@misc{sphinx-packet,
+  author       = {Crates.io},
+  title        = {sphinx-packet: Implementation of the Sphinx Packet Format},
+  howpublished = {\url{https://crates.io/crates/sphinx-packet}},
+  note         = {Accessed: 2025-01-10},
+}
+
+@InProceedings{topology,
+author="Dingledine, Roger
+and Shmatikov, Vitaly
+and Syverson, Paul",
+editor="Martin, David
+and Serjantov, Andrei",
+title="Synchronous Batching: From Cascades to Free Routes",
+booktitle="Privacy Enhancing Technologies",
+year="2005",
+publisher="Springer Berlin Heidelberg",
+address="Berlin, Heidelberg",
+pages="186--206",
+abstract="The variety of possible anonymity network topologies has spurred much debate in recent years. In a synchronous batching design, each batch of messages enters the mix network together, and the messages proceed in lockstep through the network. We show that a synchronous batching strategy can be used in various topologies, including a free-route network, in which senders choose paths freely, and a cascade network, in which senders choose from a set of fixed paths. We show that free-route topologies can provide better anonymity as well as better message reliability in the event of partial network failure.",
+isbn="978-3-540-31960-3"
+}
+
+
+@inproceedings {tor,
+author = {Roger Dingledine and Nick Mathewson and Paul Syverson},
+title = {Tor: The {Second-Generation} Onion Router},
+booktitle = {13th USENIX Security Symposium (USENIX Security 04)},
+year = {2004},
+address = {San Diego, CA},
+url = {https://www.usenix.org/conference/13th-usenix-security-symposium/tor-second-generation-onion-router},
+publisher = {USENIX Association},
+month = aug
+}
+
+@InProceedings{flood,
+author="Serjantov, Andrei
+and Dingledine, Roger
+and Syverson, Paul",
+editor="Petitcolas, Fabien A. P.",
+title="From a Trickle to a Flood: Active Attacks on Several Mix Types",
+booktitle="Information Hiding",
+year="2003",
+publisher="Springer Berlin Heidelberg",
+address="Berlin, Heidelberg",
+pages="36--52",
+abstract="The literature contains a variety of different mixes, some of which have been used in deployed anonymity systems. We explore their anonymity and message delay properties, and show how to mount active attacks against them by altering the traffic between the mixes. We show that if certain mixes are used, such attacks cannot destroy the anonymity of a particular message completely. We work out the cost of these attacks in terms of the number of messages the attacker must insert into the network and the time he must spend. We discuss advantages and disadvantages of these mixes and the settings in which their use is appropriate. Finally, we look at dummy traffic and SG mixes as other promising ways of protecting against the attacks, point out potential weaknesses in existing designs, and suggest improvements.",
+isbn="978-3-540-36415-3"
+}
+
+
+@InProceedings{stop,
+author="Kesdogan, Dogan
+and Egner, Jan
+and B{\"u}schkes, Roland",
+editor="Aucsmith, David",
+title="Stop- and- Go-MIXes Providing Probabilistic Anonymity in an Open System",
+booktitle="Information Hiding",
+year="1998",
+publisher="Springer Berlin Heidelberg",
+address="Berlin, Heidelberg",
+pages="83--98",
+abstract="Currently known basic anonymity techniques depend on identity verification. If verification of user identities is not possible due to the related management overhead or a general lack of information (e.g. on the Internet), an adversary can participate several times in a communication relationship and observe the honest users. In this paper we focus on the problem of providing anonymity without identity verification. The notion of probabilistic anonymity is introduced. Probabilistic anonymity is based on a publicly known security parameter, which determines the security of the protocol. For probabilistic anonymity the insecurity, expressed as the probability of having only one honest participant, approaches 0 at an exponential rate as the security parameter is changed linearly. Based on our security model we propose a new MIX variant called ``Stop-and-Go-MIX'' (SG-MIX) which provides anonymity without identity verification, and prove that it is probabilistically secure.",
+isbn="978-3-540-49380-8"
+}
+
+@misc{fledger,
+  author       = {Ineiti},
+  title        = {Fledger - the fast, fun, easy ledger},
+  howpublished = {\url{https://github.com/ineiti/fledger}},
+  note         = {Accessed: 2025-01-10},
+}
+
+@inproceedings{chaum1981mix,
+  author       = {David L. Chaum},
+  title        = {Untraceable Electronic Mail, Return Addresses, and Digital Pseudonyms},
+  booktitle    = {Communications of the ACM},
+  volume       = {24},
+  number       = {2},
+  pages        = {84--90},
+  year         = {1981},
+  month        = {February},
+  publisher    = {ACM},
+  url          = {https://www.freehaven.net/anonbib/cache/chaum-mix.pdf},
+}
+
+
+@INPROCEEDINGS{CAT,
+  author={Li, Fengjun and Luo, Bo and Liu, Peng and Chu, Chao-Hsien},
+  booktitle={2010 Proceedings IEEE INFOCOM}, 
+  title={A Node-failure-resilient Anonymous Communication Protocol through Commutative Path Hopping}, 
+  year={2010},
+  volume={},
+  number={},
+  pages={1-9},
+  keywords={Protocols;Relays;Peer to peer computing;Scalability;Internet;Privacy;Cryptography;Timing;Probes;Communications Society},
+  doi={10.1109/INFCOM.2010.5462114}}
+
+@techreport{nym,
+  author       = {Claudia Diaz and Harry Halpin and Aggelos Kiayias},
+  title        = {The Nym Network: The Next Generation of Privacy Infrastructure},
+  institution  = {Nym Technologies SA},
+  year         = {2021},
+  month        = {February},
+  number       = {1.0},
+  type         = {Whitepaper},
+  url          = {https://nym.com/nym-whitepaper.pdf},
+}
+
+@misc{Riffle, title={Riffle: An Efficient Communication System With Strong Anonymity}, volume={2016}, url={https://infoscience.epfl.ch/handle/20.500.14299/196580}, DOI={10.1515/popets-2016-0008}, abstractNote={Existing anonymity systems sacrifice anonymity for efficient communication or vice-versa. Onion-routing achieves low latency, high bandwidth, and scalable anonymous communication, but is susceptible to traffic analysis attacks. Designs based on DC-Nets, on the other hand, protect the users against traffic analysis attacks, but sacrifice bandwidth. Verifiable mixnets maintain strong anonymity with low bandwidth overhead, but suffer from high computation overhead instead. In this paper, we present Riffle, a bandwidth and computation efficient communication system with strong anonymity. Riffle consists of a small set of anonymity servers and a large number of users, and guarantees anonymity among all honest clients as long as there exists at least one honest server. Riffle uses a new hybrid verifiable shuffle technique and private information retrieval for bandwidth- and computation-efficient anonymous communication. Our evaluation of Riffle in file sharing and microblogging applications shows that Riffle can achieve a bandwidth of over 100KB/s per user in an anonymity set of 200 users in the case of file sharing, and handle over 100,000 users with less than 10 second latency in the case of microblogging.}, number={2}, author={Kwon, Albert and Lazar, David and Devadas, Srinivas and Ford, Bryan Alexander}, year={2016}, month={jul}, pages={115–134}, keywords={privacy | security | anonymity | cryptography | dining cryptographers | traffic analysis | file sharing} }
+
+@inproceedings{atom,
+author = {Kwon, Albert and Corrigan-Gibbs, Henry and Devadas, Srinivas and Ford, Bryan},
+title = {Atom: Horizontally Scaling Strong Anonymity},
+year = {2017},
+isbn = {9781450350853},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3132747.3132755},
+doi = {10.1145/3132747.3132755},
+abstract = {Atom is an anonymous messaging system that protects against traffic-analysis attacks. Unlike many prior systems, each Atom server touches only a small fraction of the total messages routed through the network. As a result, the system's capacity scales near-linearly with the number of servers. At the same time, each Atom user benefits from "best possible" anonymity: a user is anonymous among all honest users of the system, even against an active adversary who monitors the entire network, a portion of the system's servers, and any number of malicious users. The architectural ideas behind Atom have been known in theory, but putting them into practice requires new techniques for (1) avoiding heavy general-purpose multi-party computation protocols, (2) defeating active attacks by malicious servers at minimal performance cost, and (3) handling server failure and churn.Atom is most suitable for sending a large number of short messages, as in a microblogging application or a high-security communication bootstrapping ("dialing") for private messaging systems. We show that, on a heterogeneous network of 1,024 servers, Atom can transit a million Tweet-length messages in 28 minutes. This is over 23x faster than prior systems with similar privacy guarantees.},
+booktitle = {Proceedings of the 26th Symposium on Operating Systems Principles},
+pages = {406–422},
+numpages = {17},
+keywords = {verifiable shuffle, mix-net, Anonymous communication},
+location = {Shanghai, China},
+series = {SOSP '17}
+}
+
+@misc{loopix_deepmind,
+  author       = {Google DeepMind},
+  title        = {Anonymous messaging using mix networks},
+  howpublished = {\url{https://github.com/google-deepmind/loopix-messaging}},
+  note         = {Accessed: 2025-01-10},
+}
+
+@inproceedings{vuvuzela,
+author = {van den Hooff, Jelle and Lazar, David and Zaharia, Matei and Zeldovich, Nickolai},
+title = {Vuvuzela: scalable private messaging resistant to traffic analysis},
+year = {2015},
+isbn = {9781450338349},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/2815400.2815417},
+doi = {10.1145/2815400.2815417},
+abstract = {Private messaging over the Internet has proven challenging to implement, because even if message data is encrypted, it is difficult to hide metadata about who is communicating in the face of traffic analysis. Systems that offer strong privacy guarantees, such as Dissent [36], scale to only several thousand clients, because they use techniques with superlinear cost in the number of clients (e.g., each client broadcasts their message to all other clients). On the other hand, scalable systems, such as Tor, do not protect against traffic analysis, making them ineffective in an era of pervasive network monitoring.Vuvuzela is a new scalable messaging system that offers strong privacy guarantees, hiding both message data and metadata. Vuvuzela is secure against adversaries that observe and tamper with all network traffic, and that control all nodes except for one server. Vuvuzela's key insight is to minimize the number of variables observable by an attacker, and to use differential privacy techniques to add noise to all observable variables in a way that provably hides information about which users are communicating. Vuvuzela has a linear cost in the number of clients, and experiments show that it can achieve a throughput of 68,000 messages per second for 1 million users with a 37-second end-to-end latency on commodity servers.},
+booktitle = {Proceedings of the 25th Symposium on Operating Systems Principles},
+pages = {137–152},
+numpages = {16},
+location = {Monterey, California},
+series = {SOSP '15}
+}
+@inproceedings {groove,
+author = {Ludovic Barman and Moshe Kol and David Lazar and Yossi Gilad and Nickolai Zeldovich},
+title = {Groove: Flexible {Metadata-Private} Messaging},
+booktitle = {16th USENIX Symposium on Operating Systems Design and Implementation (OSDI 22)},
+year = {2022},
+isbn = {978-1-939133-28-1},
+address = {Carlsbad, CA},
+pages = {735--750},
+url = {https://www.usenix.org/conference/osdi22/presentation/barman},
+publisher = {USENIX Association},
+month = jul
+}
+
+@article{prifi,
+  author       = {Ludovic Barman and
+                  Italo Dacosta and
+                  Mahdi Zamani and
+                  Ennan Zhai and
+                  Bryan Ford and
+                  Jean{-}Pierre Hubaux and
+                  Joan Feigenbaum},
+  title        = {PriFi: {A} Low-Latency Local-Area Anonymous Communication Network},
+  journal      = {CoRR},
+  volume       = {abs/1710.10237},
+  year         = {2017},
+  url          = {http://arxiv.org/abs/1710.10237},
+  eprinttype    = {arXiv},
+  eprint       = {1710.10237},
+  timestamp    = {Mon, 13 Aug 2018 16:46:53 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-1710-10237.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+
+@misc{larmix,
+      author = {Mahdi Rahimi},
+      title = {{LARMix}$\mathbf{++}$: Latency-Aware Routing in Mix Networks with Free Routes Topology},
+      howpublished = {Cryptology {ePrint} Archive, Paper 2024/1485},
+      year = {2024},
+      doi = {10.1007/978-981-97-8013-6_9},
+      url = {https://eprint.iacr.org/2024/1485}
+}
+
+@inproceedings{cashmere,
+author = {Zhuang, Li and Zhou, Feng and Zhao, Ben Y. and Rowstron, Antony},
+title = {Cashmere: resilient anonymous routing},
+year = {2005},
+publisher = {USENIX Association},
+address = {USA},
+abstract = {Anonymous routing protects user communication from identification by third-party observers. Existing anonymous routing layers utilize Chaum-Mixes for anonymity by relaying traffic through relay nodes called mixes. The source defines a static forwarding path through which traffic is relayed to the destination. The resulting path is fragile and shortlived: failure of one mix in the path breaks the forwarding path and results in data loss and jitter before a new path is constructed. In this paper, we propose Cashmere, a resilient anonymous routing layer built on a structured peer-to-peer overlay. Instead of single-node mixes, Cashmere selects regions in the overlay namespace as mixes. Any node in a region can act as the MIX, drastically reducing the probability of a mix failure. We analyze Cashmere's anonymity and measure its performance through simulation and measurements, and show that it maintains high anonymity while providing orders of magnitude improvement in resilience to network dynamics and node failures.},
+booktitle = {Proceedings of the 2nd Conference on Symposium on Networked Systems Design \& Implementation - Volume 2},
+pages = {301–314},
+numpages = {14},
+series = {NSDI'05}
+}
+
+@misc{impl_loopix,
+  author       = {UCL InfoSec Group},
+  title        = {Loopix: Low-Latency Anonymous Communication System},
+  howpublished = {\url{https://github.com/UCL-InfoSec/loopix}},
+  note         = {Accessed: 2025-01-10},
+}
+
+
+@misc{sphere_experimentation,
+  author       = {SPHERE Project},
+  title        = {SPHERE Experimentation Documentation},
+  howpublished = {\url{https://mergetb.gitlab.io/testbeds/sphere/sphere-docs/docs/experimentation/}},
+  note         = {Accessed: 2025-01-10},
+}
+
+
+@INPROCEEDINGS{sphinx,
+  author={Danezis, George and Goldberg, Ian},
+  booktitle={2009 30th IEEE Symposium on Security and Privacy}, 
+  title={Sphinx: A Compact and Provably Secure Mix Format}, 
+  year={2009},
+  volume={},
+  number={},
+  pages={269-282},
+  keywords={Cryptography;Relays;Telecommunication traffic;Routing;Information security;Privacy;Information analysis;Protection;Data mining;Leg},
+  doi={10.1109/SP.2009.15}}
+
+
+@INPROCEEDINGS{hybrid_routing,
+  author={Xia, Yusheng and Chen, Rongmao and Su, Jinshu and Pan, Chen and Su, Han},
+  booktitle={ICC 2020 - 2020 IEEE International Conference on Communications (ICC)}, 
+  title={Hybrid Routing: Towards Resilient Routing in Anonymous Communication Networks}, 
+  year={2020},
+  volume={},
+  number={},
+  pages={1-7},
+  keywords={Routing;Resilience;Public key;Peer-to-peer computing;Encryption;Resilient;Anonymous;Threshold.},
+  doi={10.1109/ICC40277.2020.9149166}}

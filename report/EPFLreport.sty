@@ -12,7 +12,13 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \ProvidesPackage{EPFLreport}
 \usepackage[absolute]{textpos}
+\usepackage{booktabs} 
+\usepackage{longtable} 
+\usepackage{adjustbox}
+\usepackage{array}
+\usepackage{pdflscape}
 \usepackage{graphicx}
+\usepackage{wrapfig}
 \usepackage{subcaption}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -28,7 +34,7 @@
   defernumbers=true,
   maxbibnames=99,
 ]{biblatex}
-\addbibresource{thesis.bib}
+\addbibresource{report.bib}
 \setcounter{biburllcpenalty}{7000}
 \setcounter{biburlucpenalty}{8000}
 %\sloppy
@@ -147,7 +153,7 @@ CH-1015 Lausanne \\[\baselineskip]
 }
 
 \def\@acknowledgments{%
-I would like to thank Linus Gasser for his invaluable help and input throughout the project, as well as the opportunity to work on Fledger, and Pierluca Borsò-Tan for his guidance and for making this project possible.
+I would like to thank Linus Gasser for his invaluable help and input throughout the project, as well as the opportunity to work on Fledger, and Pierluca Borsò-Tan for his guidance and for making this project possible.\footnotetext{ChatGPT, a large language model by OpenAI, was used to improve the language and grammar of this report.}
 }
 \newcommand{\acknowledgments}[1]{
   \def\@acknowledgments{#1}
