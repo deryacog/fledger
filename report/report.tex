@@ -46,7 +46,7 @@
 % This section is usually 3-5 pages.
 Fledger~\cite{fledger} is a peer-to-peer network designed to operate directly in the browser without the need for proxies. It enables direct communication between browser nodes and includes planned features for sharing resources such as disk space, CPU, and network bandwidth. Current applications include a decentralized chat system and a web proxy. However, the existing web proxy raises significant privacy concerns. While it reduces the visibility of a user's internet activity to their ISP, it allows the proxy node to monitor traffic patterns. Proxy requests expose the user's address, and repeated requests from the same node can reveal usage patterns. Moreover, the web proxy service lacks safeguards against network observers within the peer-to-peer system.
 
-To address these privacy concerns, integrating an anonymous communication system into Fledger's web proxy application would greatly enhance user privacy. Tor~\cite{tor} is a well-known candidate for such an application, but it provides only limited protection against traffic analysis \textbf{cite}. In contrast, mix networks~\cite{chaum1981mix} offer stronger defenses against some of Tor's privacy shortcomings but suffer from high latency due to their round-based packet routing.
+To address these privacy concerns, integrating an anonymous communication system into Fledger's web proxy application would greatly enhance user privacy. Tor~\cite{tor} is a well-known candidate for such an application, but it provides only limited protection against traffic analysis~\cite{9089497}. In contrast, mix networks~\cite{chaum1981mix} offer stronger defenses against some of Tor's privacy shortcomings but suffer from high latency due to their round-based packet routing.
 
 This project evaluates existing anonymous communication systems for their suitability in the Fledger web proxy application. The evaluation focuses on criteria such as low latency, scalability, threat models, message throughput, resilience to churn, and the availability of reference implementations. Various systems were reviewed, include but are not limited systems such as Prifi~\cite{prifi}, Atom~\cite{atom}, and Riffle~\cite{Riffle}. Some systems demonstrated low latency but lacked scalability, while others combined good latency and scalability but failed to meet the bandwidth requirements of a web proxy. Based on this analysis, Loopix was identified as the most suitable option, offering low latency and adaptability to diverse settings through the use of cover traffic.
 
@@ -156,7 +156,7 @@ For each functionality in Fledger, there is a separate module. This section will
 
 \begin{itemize}
     \item \textbf{Network}\\
-    Network module uses the WebRTC protocol and enables other modules send messages through its messages. It can be used for both browsers and for Fledger nodes. In this project we use Fledger as 
+    Network module uses the WebRTC protocol and enables other modules send messages through its messages. It can be used for both browsers and for Fledger nodes.
     \item \textbf{Gossip and Random Connections Modules} \\
     Gossiping module enables messages to be propagated through the Fledger network, and it uses Random Connections module. Random Connections module is designed to establish random connections between the nodes, and it uses the network module to send messages to the selected nodes. These two module are used for the bootstrapping of the Loopix Module for the purpose of experimentation. See \autoref{sec:impl_bootstrapping} for further details about the bootstrapping.
     \item \textbf{Web Proxy}\\
@@ -641,6 +641,7 @@ In \autoref{fig:heatmap_latency}, \(N_R\) value over 9 and below 3 increases the
 
 %-------------------
 \section{Reliability Mechanisms}
+\label{sec:reliabilty}
 %-------------------
 Having fine-tuned the Loopix parameters for the web proxy application, it is necessary to evaluate the feasibility of this system in the presence of mix node failures. This section examines the effects of the retry and duplicate message mechanisms described in\autoref{sec:design_reliability} on the success rate of web proxy requests and average end-to-end latency.
 
@@ -714,6 +715,9 @@ In this section, we evaluate the impact of duplicate messages on the reliability
 \end{figure}
 
 \section{Overview}
+While this regulation has primarily been used to adjust the mean number of messages at a mix node, it also provides the flexibility to adapt cover traffic dynamically as nodes join or leave the network. This adaptability allows Loopix to accommodate significantly more nodes than what was feasible for experimentation in this project. Since the parameters of the Loopix system are consistent across all nodes, it is possible to reduce cover traffic as new nodes enter the network, ensuring that the threshold identified in \autoref{sec:mu} is not exceeded. Furthermore, this ability to adjust cover traffic dynamically is particularly valuable in handling churn, as explored later in our evaluation.
+
+While the results presented in \autoref{sec:reliabilty} may seem underwhelming, it is important to note that the mechanisms evaluated are relatively simple. Moreover, neither of these schemes increases bandwidth usage, as all messages are sent at the rates configured in Loopix, as outlined in \autoref{sec:finetune}. A somewhat surprising finding from the evaluation of these reliability mechanisms is that duplicate messages are a simple yet effective way to improve reliability in the Fledger Loopix module. Further research is needed, including more fine-grained simulations of failures, particularly scenarios where nodes come back online at varying rates.
 
 %%%%%%%%%%%%%%%%%%%%%%
 \chapter{Future Work}
@@ -771,8 +775,13 @@ Mix nodes in the first and final layers of the mix network could be used as entr
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Conclusion}
 %%%%%%%%%%%%%%%%%%%%
+In this project, we investigated various anonymous communication systems to assess their applicability to web browsing. We integrated one of these systems into Fledger and tuned its parameters for this specific use case, achieving a latency of 2–3 seconds. Subsequently, we revisited the literature to explore reliability mechanisms for mix networks. While many promising approaches exist for improving reliable message delivery, we evaluated two simple mechanisms: retrying and duplicate messages.
 
-\textbf{"Mixers are great but need to do something about churn" -Linus}
+The retrying mechanism proved to be relatively ineffective at improving request reliability. In contrast, duplicate messages—sending the same message through independent routes—emerged as a highly viable mechanism in this context. This approach achieved a success rate close to that of web proxy messages without any mix node failures (\(\approx\) 90\%), even in scenarios where 17\% of mix nodes failed. For comparison, the success rate without any reliability mechanisms dropped to approximately 10\% under similar conditions.
+
+While duplicate messages show significant promise, further investigation into additional reliability mechanisms is essential to make the Fledger Loopix module implemented in this project a practical solution for web browsing. 
+Mechanisms discussed in the previous section can be integrated into the module, but additional work is needed to simulate churn in peer-to-peer networks more effectively, enabling a more thorough evaluation of the different reliability mechanisms.
+
 
 % In the conclusion you repeat the main result and finalize the discussion of
 % your project. Mention the core results and why as well as how your system
