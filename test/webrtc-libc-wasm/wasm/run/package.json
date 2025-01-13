@@ -22,6 +22,6 @@
   "dependencies": {
     "@mapbox/node-pre-gyp": "^1.0.9",
     "@roamhq/wrtc": "^0.8.0",
-    "ws": "^7.4.3"
+    "ws": "^7.5.10"
   }
 }
